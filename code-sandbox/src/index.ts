@@ -41,11 +41,18 @@ app.post("/register_command", async (c) => {
 type RunCommandRequest = {
   command_name: string
   isCode: boolean
+  vars: Record<string, string>
 }
 
 app.post("/run_command", async (c) => {
   const request = await c.req.json<RunCommandRequest>()
-  const command = await runCommand(c.env, request.command_name, request.isCode)
+  const command = await runCommand(
+    c.executionCtx,
+    c.env,
+    request.command_name,
+    request.isCode,
+    request.vars
+  )
 
   if (!command) {
     return c.json(

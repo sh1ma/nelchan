@@ -21,9 +21,11 @@ const getCommandContent = (result: NelchanGetCommandResult) => {
 }
 
 export const runCommand = async (
+  exCtx: ExecutionContext,
   env: Env,
   commandName: string,
-  isCode: boolean
+  isCode: boolean,
+  envVars: Record<string, string>
 ) => {
   // Query based on command type
   const query = isCode
@@ -60,13 +62,31 @@ export const runCommand = async (
     const randomString = crypto.randomUUID()
     const sandbox = getSandbox(env.Sandbox, randomString)
     const ctx = await sandbox.createCodeContext({ language: "python" })
-    const executionResult = await sandbox.runCode(result.code, { context: ctx })
-    console.log("[runCommand] executionResult: ", executionResult)
-    const codeResultOutput = executionResult.logs.stdout.join("\n")
-    return {
-      id: result.id,
-      name: result.name,
-      content: codeResultOutput,
+    try {
+      const envEmbededCode = `
+${Object.entries(envVars)
+  .map(([key, value]) => `${key}="${value}"`)
+  .join("\n")}
+def cs(s: str):
+    return f"\`\`\`{s}\`\`\`"
+${result.code}
+`
+
+      const executionResult = await sandbox.runCode(envEmbededCode, {
+        context: ctx,
+      })
+      console.log("[runCommand] executionResult: ", executionResult)
+      const codeResultOutput = executionResult.logs.stdout.join("\n")
+      return {
+        id: result.id,
+        name: result.name,
+        content: codeResultOutput,
+      }
+    } catch (error) {
+      console.error("[runCommand] error: ", error)
+      throw new Error("Error running code")
+    } finally {
+      exCtx.waitUntil(sandbox.destroy())
     }
   }
 
