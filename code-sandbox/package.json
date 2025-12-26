@@ -1,0 +1,25 @@
+{
+  "name": "code-sandbox",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Code Sandbox",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "cf-typegen": "wrangler types",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/sandbox": "^0.6.7",
+    "@types/node": "^24.10.4",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.54.0"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "hono": "^4.11.3"
+  }
+}
