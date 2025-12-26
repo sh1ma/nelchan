@@ -1,13 +1,8 @@
 package nelchanbot
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -19,8 +14,10 @@ type NelchanConfig struct {
 }
 
 type Nelchan struct {
-	Config  NelchanConfig
-	Discord *discordgo.Session
+	Config           NelchanConfig
+	Discord          *discordgo.Session
+	CommandAPIClient *CommandAPIClient
+	CommandParser    *CommandParser
 }
 
 func NewNelchan() (*Nelchan, error) {
@@ -51,9 +48,14 @@ func NewNelchan() (*Nelchan, error) {
 		CodeSandboxURL: codeSandboxURL,
 	}
 
+	commandAPIClient := NewCommandAPIClient(codeSandboxURL)
+	commandParser := NewCommandParser()
+
 	return &Nelchan{
-		Config:  config,
-		Discord: discord,
+		Config:           config,
+		Discord:          discord,
+		CommandAPIClient: commandAPIClient,
+		CommandParser:    commandParser,
 	}, nil
 }
 
@@ -104,32 +106,28 @@ func (n *Nelchan) HandleMessageCreate(s *discordgo.Session, m *discordgo.Message
 	if strings.HasPrefix(m.Content, "!") {
 		// Handle !register_code command
 		if strings.HasPrefix(m.Content, "!register_code ") {
-			handleRegisterCodeCommand(s, m)
+			n.handleRegisterCodeCommand(s, m)
 			return
 		}
 
 		// Handle !register command
 		if strings.HasPrefix(m.Content, "!register ") {
-			handleRegisterCommand(s, m)
+			n.handleRegisterCommand(s, m)
 			return
 		}
 
 		if strings.HasPrefix(m.Content, "!exec") {
-			handleExecCommand(s, m)
+			n.handleExecCommand(s, m)
 			return
 		}
 
 		// Handle code commands (with ! prefix)
-		commandName := strings.TrimPrefix(m.Content, "!")
-		// Split by space to get just the command name (ignore arguments for now)
-		commandParts := strings.Split(commandName, " ")
-		commandName = commandParts[0]
-
-		if commandName == "" {
+		cmd := n.CommandParser.ParseSlashCommand(m.Content)
+		if cmd == nil || !cmd.IsValid() {
 			return
 		}
 
-		fmt.Printf("code command received: %s\n", commandName)
+		fmt.Printf("code command received: %s\n", cmd.Name)
 
 		vars := map[string]string{
 			"username":    m.Author.DisplayName(),
@@ -138,10 +136,14 @@ func (n *Nelchan) HandleMessageCreate(s *discordgo.Session, m *discordgo.Message
 		}
 		// varsにargsを追加
 		// arg1, arg2, arg3, ...
-		for i := 1; i < len(commandParts); i++ {
-			vars[fmt.Sprintf("arg%d", i)] = commandParts[i]
+		for i, arg := range cmd.Args {
+			vars[fmt.Sprintf("arg%d", i+1)] = arg
 		}
-		result, err := runCommandAPI(commandName, true, vars)
+		result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
+			CommandName: cmd.Name,
+			IsCode:      true,
+			Vars:        vars,
+		})
 
 		if err != nil {
 			fmt.Println("error running command,", err)
@@ -176,7 +178,11 @@ func (n *Nelchan) HandleMessageCreate(s *discordgo.Session, m *discordgo.Message
 
 	fmt.Printf("text command received: %s\n", commandName)
 
-	result, err := runCommandAPI(commandName, false, nil)
+	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
+		CommandName: commandName,
+		IsCode:      false,
+		Vars:        nil,
+	})
 	if err != nil {
 		fmt.Println("error running text command,", err)
 		return
@@ -199,27 +205,15 @@ func (n *Nelchan) HandleMessageCreate(s *discordgo.Session, m *discordgo.Message
 // handleRegisterCodeCommand handles the !register_code command
 // Usage: !register_code <command_name> <code>
 // Code can be plain text or wrapped in backticks (```python ... ```)
-func handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Remove the "!register_code " prefix
-	content := strings.TrimPrefix(m.Content, "!register_code ")
-
-	// Split by space or newline to get command name and code
-	parts := strings.SplitN(content, " ", 2)
-	if len(parts) < 2 {
-		// Try splitting by newline
-		parts = strings.SplitN(content, "\n", 2)
-	}
-
-	if len(parts) < 2 {
+func (n *Nelchan) handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
+	cmd := n.CommandParser.ParseSlashCommandWithBody(m.Content, 2)
+	if cmd == nil || len(cmd.Args) < 2 {
 		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !register_code <コマンド名> <コード>")
 		return
 	}
 
-	commandName := strings.TrimSpace(parts[0])
-	code := strings.TrimSpace(parts[1])
-
-	// Extract code from backticks if present
-	code = extractCodeFromBackticks(code)
+	commandName := cmd.GetArg(0)
+	code := n.CommandParser.ExtractCodeFromBackticks(cmd.GetArg(1))
 
 	if commandName == "" || code == "" {
 		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !register_code <コマンド名> <コード>")
@@ -228,7 +222,12 @@ func handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.MessageCreate)
 
 	fmt.Printf("register_code command: name=%s, code=%s\n", commandName, code)
 
-	err := registerCommandAPI(commandName, code, true, m.Author.ID)
+	err := n.CommandAPIClient.RegisterCommand(RegisterCommandRequest{
+		CommandName:    commandName,
+		CommandContent: code,
+		IsCode:         true,
+		AuthorID:       m.Author.ID,
+	})
 	if err != nil {
 		fmt.Println("error registering command,", err)
 		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
@@ -240,24 +239,15 @@ func handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.MessageCreate)
 
 // handleRegisterCommand handles the !register command
 // Usage: !register <command_name> <text>
-func handleRegisterCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Remove the "!register " prefix
-	content := strings.TrimPrefix(m.Content, "!register ")
-
-	// Split by space or newline to get command name and text
-	parts := strings.SplitN(content, " ", 2)
-	if len(parts) < 2 {
-		// Try splitting by newline
-		parts = strings.SplitN(content, "\n", 2)
-	}
-
-	if len(parts) < 2 {
+func (n *Nelchan) handleRegisterCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
+	cmd := n.CommandParser.ParseSlashCommandWithBody(m.Content, 2)
+	if cmd == nil || len(cmd.Args) < 2 {
 		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !register <コマンド名> <テキスト>")
 		return
 	}
 
-	commandName := strings.TrimSpace(parts[0])
-	text := strings.TrimSpace(parts[1])
+	commandName := cmd.GetArg(0)
+	text := cmd.GetArg(1)
 
 	if commandName == "" || text == "" {
 		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !register <コマンド名> <テキスト>")
@@ -266,7 +256,12 @@ func handleRegisterCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	fmt.Printf("register command: name=%s, text=%s\n", commandName, text)
 
-	err := registerCommandAPI(commandName, text, false, m.Author.ID)
+	err := n.CommandAPIClient.RegisterCommand(RegisterCommandRequest{
+		CommandName:    commandName,
+		CommandContent: text,
+		IsCode:         false,
+		AuthorID:       m.Author.ID,
+	})
 	if err != nil {
 		fmt.Println("error registering command,", err)
 		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
@@ -276,26 +271,25 @@ func handleRegisterCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
 	_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("コマンド「%s」を登録しました！", commandName))
 }
 
-func handleExecCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Remove the "!exec " prefix
-	content := strings.TrimPrefix(m.Content, "!exec ")
-
-	// Split by space to get command name and code
-	parts := strings.SplitN(content, " ", 2)
-	if len(parts) < 2 {
-		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !exec <コマンド名> <コード>")
+func (n *Nelchan) handleExecCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
+	cmd := n.CommandParser.ParseSlashCommandWithBody(m.Content, 2)
+	if cmd == nil || len(cmd.Args) < 1 {
+		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !exec <コマンド名>")
 		return
 	}
 
-	commandName := strings.TrimSpace(parts[0])
-	code := strings.TrimSpace(parts[1])
+	commandName := cmd.GetArg(0)
 
-	if commandName == "" || code == "" {
-		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !exec <コマンド名> <コード>")
+	if commandName == "" {
+		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !exec <コマンド名>")
 		return
 	}
 
-	result, err := runCommandAPI(commandName, true, nil)
+	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
+		CommandName: commandName,
+		IsCode:      true,
+		Vars:        nil,
+	})
 	if err != nil {
 		fmt.Println("error running command,", err)
 		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
@@ -314,207 +308,4 @@ func handleExecCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	fmt.Printf("message sent: %s\n", result.Content)
-}
-
-// extractCodeFromBackticks extracts code from markdown code blocks
-// Supports the following formats:
-// - ```code``` (inline triple backticks)
-// - ```py\ncode\n``` (with language specifier)
-// - ```\ncode\n``` (without language specifier)
-// - `code` (single backticks)
-// - code (plain text, no backticks)
-func extractCodeFromBackticks(content string) string {
-	content = strings.TrimSpace(content)
-
-	// Case 1: Triple backticks with optional language specifier
-	// Matches ```python\ncode\n``` or ```\ncode\n``` or ```code```
-	tripleBacktickRe := regexp.MustCompile("(?s)^```(?:\\w*)?\\s*\\n?(.*?)\\n?```$")
-	matches := tripleBacktickRe.FindStringSubmatch(content)
-	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
-	}
-
-	// Case 2: Single backticks
-	// Matches `code`
-	singleBacktickRe := regexp.MustCompile("^`([^`]+)`$")
-	matches = singleBacktickRe.FindStringSubmatch(content)
-	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
-	}
-
-	// Case 3: Plain text (no backticks)
-	return content
-}
-
-type CodeSandboxResponse struct {
-	Result ExecutionResult `json:"result"`
-}
-
-type RunCommandRequest struct {
-	CommandName string            `json:"command_name"`
-	IsCode      bool              `json:"isCode"`
-	Vars        map[string]string `json:"vars"`
-}
-
-type RegisterCommandRequest struct {
-	CommandName    string `json:"command_name"`
-	CommandContent string `json:"command_content"`
-	IsCode         bool   `json:"isCode"`
-	AuthorID       string `json:"author_id"`
-}
-
-type RegisterCommandResponse struct {
-	Error *string `json:"error"`
-}
-
-func registerCommandAPI(commandName, commandContent string, isCode bool, authorID string) error {
-	requestBody := RegisterCommandRequest{
-		CommandName:    commandName,
-		CommandContent: commandContent,
-		IsCode:         isCode,
-		AuthorID:       authorID,
-	}
-	requestBodyJSON, err := json.Marshal(requestBody)
-	if err != nil {
-		return fmt.Errorf("error marshalling request body: %w", err)
-	}
-
-	env := os.Getenv("ENV")
-	var CodeSandboxURL string
-	if env == "production" {
-		CodeSandboxURL = "https://my-sandbox.sh1ma.workers.dev"
-	} else {
-		CodeSandboxURL = "http://localhost:8787"
-	}
-
-	request, err := http.NewRequest("POST", CodeSandboxURL+"/register_command", bytes.NewBuffer(requestBodyJSON))
-	if err != nil {
-		return fmt.Errorf("error creating request: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return fmt.Errorf("error sending request: %w", err)
-	}
-	defer response.Body.Close()
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
-	}
-
-	fmt.Printf("register_command response body: %s\n", string(responseBody))
-
-	if response.StatusCode == 409 {
-		return fmt.Errorf("コマンド「%s」は既に存在します", commandName)
-	}
-
-	if response.StatusCode != 200 {
-		var registerResponse RegisterCommandResponse
-		err = json.Unmarshal(responseBody, &registerResponse)
-		if err == nil && registerResponse.Error != nil {
-			return fmt.Errorf("%s", *registerResponse.Error)
-		}
-		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
-	}
-
-	return nil
-}
-
-type RunCommandResponse struct {
-	Error   *string        `json:"error"`
-	Command *CommandResult `json:"command"`
-}
-
-type CommandResult struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Content string `json:"content"`
-}
-
-func runCommandAPI(commandName string, isCode bool, vars map[string]string) (*CommandResult, error) {
-	requestBody := RunCommandRequest{
-		CommandName: commandName,
-		IsCode:      isCode,
-		Vars:        vars,
-	}
-	requestBodyJSON, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("error marshalling request body: %w", err)
-	}
-
-	env := os.Getenv("ENV")
-	var CodeSandboxURL string
-	if env == "production" {
-		CodeSandboxURL = "https://my-sandbox.sh1ma.workers.dev"
-	} else {
-		CodeSandboxURL = "http://localhost:8787"
-	}
-
-	request, err := http.NewRequest("POST", CodeSandboxURL+"/run_command", bytes.NewBuffer(requestBodyJSON))
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("error sending request: %w", err)
-	}
-	defer response.Body.Close()
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %w", err)
-	}
-
-	fmt.Printf("run_command response body: %s\n", string(responseBody))
-
-	if response.StatusCode == 404 {
-		return nil, nil
-	}
-
-	if response.StatusCode != 200 {
-		return nil, fmt.Errorf("unexpected status code: %d", response.StatusCode)
-	}
-
-	var runCommandResponse RunCommandResponse
-	err = json.Unmarshal(responseBody, &runCommandResponse)
-	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling response body: %w", err)
-	}
-
-	return runCommandResponse.Command, nil
-}
-
-type ExecutionResult struct {
-	Code string `json:"code"`
-	Logs struct {
-		Stdout []string `json:"stdout"`
-		Stderr []string `json:"stderr"`
-	} `json:"logs"`
-	Error          *ExecutionError `json:"error"`
-	ExecutionCount int             `json:"executionCount"`
-	Results        []Result        `json:"results"`
-}
-
-type ExecutionError struct {
-	Message    string   `json:"message"`
-	Traceback  []string `json:"traceback"`
-	LineNumber int      `json:"lineNumber"`
-}
-
-type Result struct {
-	Text       string `json:"text"`
-	Html       string `json:"html"`
-	Png        string `json:"png"`
-	Jpeg       string `json:"jpeg"`
-	Svg        string `json:"svg"`
-	Latex      string `json:"latex"`
-	Markdown   string `json:"markdown"`
-	Javascript string `json:"javascript"`
-	Json       string `json:"json"`
-	Chart      string `json:"chart"`
-	Data       string `json:"data"`
 }
