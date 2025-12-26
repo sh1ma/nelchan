@@ -3,7 +3,6 @@ package nelchanbot
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -18,6 +17,7 @@ type Nelchan struct {
 	Discord          *discordgo.Session
 	CommandAPIClient *CommandAPIClient
 	CommandParser    *CommandParser
+	CommandRouter    *CommandRouter
 }
 
 func NewNelchan() (*Nelchan, error) {
@@ -50,13 +50,25 @@ func NewNelchan() (*Nelchan, error) {
 
 	commandAPIClient := NewCommandAPIClient(codeSandboxURL)
 	commandParser := NewCommandParser()
+	commandRouter := NewCommandRouter(commandParser)
 
-	return &Nelchan{
+	n := &Nelchan{
 		Config:           config,
 		Discord:          discord,
 		CommandAPIClient: commandAPIClient,
 		CommandParser:    commandParser,
-	}, nil
+		CommandRouter:    commandRouter,
+	}
+
+	// Register built-in commands
+	commandRouter.
+		AddCommand("register", n.handleRegisterCommand).
+		AddCommand("register_code", n.handleRegisterCodeCommand).
+		AddCommand("exec", n.handleExecCommand).
+		SetCodeFallback(n.handleDynamicCodeCommand).
+		SetTextFallback(n.handleTextCommand)
+
+	return n, nil
 }
 
 func (n *Nelchan) PrintConfig() {
@@ -71,7 +83,7 @@ func (n *Nelchan) SetIntents(intents discordgo.Intent) {
 
 func (n *Nelchan) Start() error {
 	n.PrintConfig()
-	n.Discord.AddHandler(n.HandleMessageCreate)
+	n.Discord.AddHandler(n.CommandRouter.Handle)
 	n.SetIntents(discordgo.IntentsGuildMessages)
 
 	err := n.Discord.Open()
@@ -92,120 +104,11 @@ func (n *Nelchan) Close() error {
 	return nil
 }
 
-func (n *Nelchan) HandleMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-
-	// Ignore all messages created by the bot itself
-	// This isn't required in this specific example but it's a good practice.
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
-	fmt.Printf("message received: %s\n", m.Content)
-
-	// Handle commands starting with "!"
-	if strings.HasPrefix(m.Content, "!") {
-		// Handle !register_code command
-		if strings.HasPrefix(m.Content, "!register_code ") {
-			n.handleRegisterCodeCommand(s, m)
-			return
-		}
-
-		// Handle !register command
-		if strings.HasPrefix(m.Content, "!register ") {
-			n.handleRegisterCommand(s, m)
-			return
-		}
-
-		if strings.HasPrefix(m.Content, "!exec") {
-			n.handleExecCommand(s, m)
-			return
-		}
-
-		// Handle code commands (with ! prefix)
-		cmd := n.CommandParser.ParseSlashCommand(m.Content)
-		if cmd == nil || !cmd.IsValid() {
-			return
-		}
-
-		fmt.Printf("code command received: %s\n", cmd.Name)
-
-		vars := map[string]string{
-			"username":    m.Author.DisplayName(),
-			"user_id":     m.Author.ID,
-			"user_avatar": m.Author.Avatar,
-		}
-		// varsにargsを追加
-		// arg1, arg2, arg3, ...
-		for i, arg := range cmd.Args {
-			vars[fmt.Sprintf("arg%d", i+1)] = arg
-		}
-		result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
-			CommandName: cmd.Name,
-			IsCode:      true,
-			Vars:        vars,
-		})
-
-		if err != nil {
-			fmt.Println("error running command,", err)
-			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
-			return
-		}
-
-		if result == nil {
-			// Code command not found, don't respond
-			return
-		}
-
-		_, err = s.ChannelMessageSend(m.ChannelID, result.Content)
-		if err != nil {
-			fmt.Println("error sending message,", err)
-			return
-		}
-
-		fmt.Printf("message sent: %s\n", result.Content)
-		return
-	}
-
-	// Handle text commands (without ! prefix)
-	commandName := strings.TrimSpace(m.Content)
-	// Split by space to get just the command name (ignore arguments for now)
-	commandParts := strings.SplitN(commandName, " ", 2)
-	commandName = commandParts[0]
-
-	if commandName == "" {
-		return
-	}
-
-	fmt.Printf("text command received: %s\n", commandName)
-
-	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
-		CommandName: commandName,
-		IsCode:      false,
-		Vars:        nil,
-	})
-	if err != nil {
-		fmt.Println("error running text command,", err)
-		return
-	}
-
-	if result == nil {
-		// Text command not found, don't respond (to avoid spamming)
-		return
-	}
-
-	_, err = s.ChannelMessageSend(m.ChannelID, result.Content)
-	if err != nil {
-		fmt.Println("error sending message,", err)
-		return
-	}
-
-	fmt.Printf("message sent: %s\n", result.Content)
-}
-
 // handleRegisterCodeCommand handles the !register_code command
 // Usage: !register_code <command_name> <code>
 // Code can be plain text or wrapped in backticks (```python ... ```)
-func (n *Nelchan) handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (n *Nelchan) handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.MessageCreate, _ *SlashCommand) {
+	// Re-parse with body support for code commands
 	cmd := n.CommandParser.ParseSlashCommandWithBody(m.Content, 2)
 	if cmd == nil || len(cmd.Args) < 2 {
 		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !register_code <コマンド名> <コード>")
@@ -239,7 +142,8 @@ func (n *Nelchan) handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.M
 
 // handleRegisterCommand handles the !register command
 // Usage: !register <command_name> <text>
-func (n *Nelchan) handleRegisterCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (n *Nelchan) handleRegisterCommand(s *discordgo.Session, m *discordgo.MessageCreate, _ *SlashCommand) {
+	// Re-parse with body support for text commands
 	cmd := n.CommandParser.ParseSlashCommandWithBody(m.Content, 2)
 	if cmd == nil || len(cmd.Args) < 2 {
 		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !register <コマンド名> <テキスト>")
@@ -271,9 +175,8 @@ func (n *Nelchan) handleRegisterCommand(s *discordgo.Session, m *discordgo.Messa
 	_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("コマンド「%s」を登録しました！", commandName))
 }
 
-func (n *Nelchan) handleExecCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
-	cmd := n.CommandParser.ParseSlashCommandWithBody(m.Content, 2)
-	if cmd == nil || len(cmd.Args) < 1 {
+func (n *Nelchan) handleExecCommand(s *discordgo.Session, m *discordgo.MessageCreate, cmd *SlashCommand) {
+	if len(cmd.Args) < 1 {
 		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !exec <コマンド名>")
 		return
 	}
@@ -298,6 +201,71 @@ func (n *Nelchan) handleExecCommand(s *discordgo.Session, m *discordgo.MessageCr
 
 	if result == nil {
 		// Code command not found, don't respond
+		return
+	}
+
+	_, err = s.ChannelMessageSend(m.ChannelID, result.Content)
+	if err != nil {
+		fmt.Println("error sending message,", err)
+		return
+	}
+
+	fmt.Printf("message sent: %s\n", result.Content)
+}
+
+// handleDynamicCodeCommand handles code commands that are not registered as built-in commands
+func (n *Nelchan) handleDynamicCodeCommand(s *discordgo.Session, m *discordgo.MessageCreate, cmd *SlashCommand) {
+	vars := map[string]string{
+		"username":    m.Author.DisplayName(),
+		"user_id":     m.Author.ID,
+		"user_avatar": m.Author.Avatar,
+	}
+	// varsにargsを追加
+	// arg1, arg2, arg3, ...
+	for i, arg := range cmd.Args {
+		vars[fmt.Sprintf("arg%d", i+1)] = arg
+	}
+
+	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
+		CommandName: cmd.Name,
+		IsCode:      true,
+		Vars:        vars,
+	})
+
+	if err != nil {
+		fmt.Println("error running command,", err)
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
+		return
+	}
+
+	if result == nil {
+		// Code command not found, don't respond
+		return
+	}
+
+	_, err = s.ChannelMessageSend(m.ChannelID, result.Content)
+	if err != nil {
+		fmt.Println("error sending message,", err)
+		return
+	}
+
+	fmt.Printf("message sent: %s\n", result.Content)
+}
+
+// handleTextCommand handles text commands (without ! prefix)
+func (n *Nelchan) handleTextCommand(s *discordgo.Session, m *discordgo.MessageCreate, cmd *SlashCommand) {
+	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
+		CommandName: cmd.Name,
+		IsCode:      false,
+		Vars:        nil,
+	})
+	if err != nil {
+		fmt.Println("error running text command,", err)
+		return
+	}
+
+	if result == nil {
+		// Text command not found, don't respond (to avoid spamming)
 		return
 	}
 
