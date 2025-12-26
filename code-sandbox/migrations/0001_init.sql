@@ -8,11 +8,11 @@ CREATE TABLE commands (
 CREATE TABLE dictionaries (
     id TEXT PRIMARY KEY,
     command_id TEXT NOT NULL,
-    text TEXT NOT NULL,
+    text TEXT NOT NULL
 );
 
 CREATE TABLE codes (
     id TEXT PRIMARY KEY,
     command_id TEXT NOT NULL,
-    code TEXT NOT NULL,
+    code TEXT NOT NULL
 );

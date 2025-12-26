@@ -20,37 +20,48 @@ const getCommandContent = (result: NelchanGetCommandResult) => {
   throw new Error("No command content found")
 }
 
-export const runCommand = async (env: Env, commandName: string) => {
+export const runCommand = async (
+  env: Env,
+  commandName: string,
+  isCode: boolean
+) => {
+  // Query based on command type
+  const query = isCode
+    ? `SELECT 
+        c.id, 
+        c.name, 
+        c.author_id, 
+        co.id as code_id, 
+        co.code 
+        FROM commands c  
+        INNER JOIN codes co ON c.id = co.command_id 
+        WHERE c.name = ? LIMIT 1`
+    : `SELECT 
+        c.id, 
+        c.name, 
+        c.author_id, 
+        d.id as dictionary_id, 
+        d.text 
+        FROM commands c  
+        INNER JOIN dictionaries d ON c.id = d.command_id 
+        WHERE c.name = ? LIMIT 1`
+
   const result = await env.nelchan_db
-    .prepare(
-      `SELECT 
-    c.id, 
-    c.name, 
-    c.author_id, 
-    d.id as dictionary_id, 
-    d.text, 
-    co.id as code_id, 
-    co.code 
-    FROM commands c  
-    LEFT JOIN dictionaries d ON c.id = d.command_id 
-    LEFT JOIN codes co ON c.id = co.command_id 
-    WHERE c.name = ? LIMIT 1`
-    )
+    .prepare(query)
     .bind(commandName)
     .first<NelchanGetCommandResult>()
 
   if (!result) {
-    console.log(`Command ${commandName} not found`)
+    console.log(`Command ${commandName} not found (isCode: ${isCode})`)
     return undefined
   }
 
-  const { type, content } = getCommandContent(result)
-
-  if (type === "code") {
+  if (isCode && result.code) {
     const randomString = crypto.randomUUID()
     const sandbox = getSandbox(env.Sandbox, randomString)
     const ctx = await sandbox.createCodeContext({ language: "python" })
-    const executionResult = await sandbox.runCode(content, { context: ctx })
+    const executionResult = await sandbox.runCode(result.code, { context: ctx })
+    console.log("[runCommand] executionResult: ", executionResult)
     const codeResultOutput = executionResult.logs.stdout.join("\n")
     return {
       id: result.id,
@@ -59,11 +70,11 @@ export const runCommand = async (env: Env, commandName: string) => {
     }
   }
 
-  if (type === "text") {
+  if (!isCode && result.text) {
     return {
       id: result.id,
       name: result.name,
-      content: getCommandContent(result),
+      content: result.text,
     }
   }
 
@@ -103,16 +114,33 @@ export const registerCodeCommand = async (
   // Check if command already exists
   const existingCommand = await env.nelchan_db
     .prepare(
-      `SELECT c.id, co.id as code_id FROM commands c LEFT JOIN codes co ON c.id = co.command_id WHERE c.name = ?`
+      `SELECT c.id, co.id as code_id, d.id as dictionary_id FROM commands c LEFT JOIN codes co ON c.id = co.command_id LEFT JOIN dictionaries d ON c.id = d.command_id WHERE c.name = ?`
     )
     .bind(commandName)
-    .first<{ id: string; code_id: string | null }>()
+    .first<{
+      id: string
+      code_id: string | null
+      dictionary_id: string | null
+    }>()
 
   if (existingCommand) {
     console.log(
       "[registerCodeCommand] UPDATE existing command",
       existingCommand.id
     )
+
+    // Delete old dictionary record if exists (textCommand -> codeCommand migration)
+    if (existingCommand.dictionary_id) {
+      console.log(
+        "[registerCodeCommand] DELETE old dictionary record",
+        existingCommand.dictionary_id
+      )
+      await env.nelchan_db
+        .prepare(`DELETE FROM dictionaries WHERE id = ?`)
+        .bind(existingCommand.dictionary_id)
+        .run()
+    }
+
     if (existingCommand.code_id) {
       // Update existing code
       await env.nelchan_db
@@ -167,16 +195,33 @@ export const registerTextCommand = async (
   // Check if command already exists
   const existingCommand = await env.nelchan_db
     .prepare(
-      `SELECT c.id, d.id as dictionary_id FROM commands c LEFT JOIN dictionaries d ON c.id = d.command_id WHERE c.name = ?`
+      `SELECT c.id, d.id as dictionary_id, co.id as code_id FROM commands c LEFT JOIN dictionaries d ON c.id = d.command_id LEFT JOIN codes co ON c.id = co.command_id WHERE c.name = ?`
     )
     .bind(commandName)
-    .first<{ id: string; dictionary_id: string | null }>()
+    .first<{
+      id: string
+      dictionary_id: string | null
+      code_id: string | null
+    }>()
 
   if (existingCommand) {
     console.log(
       "[registerTextCommand] UPDATE existing command",
       existingCommand.id
     )
+
+    // Delete old code record if exists (codeCommand -> textCommand migration)
+    if (existingCommand.code_id) {
+      console.log(
+        "[registerTextCommand] DELETE old code record",
+        existingCommand.code_id
+      )
+      await env.nelchan_db
+        .prepare(`DELETE FROM codes WHERE id = ?`)
+        .bind(existingCommand.code_id)
+        .run()
+    }
+
     if (existingCommand.dictionary_id) {
       // Update existing dictionary
       await env.nelchan_db

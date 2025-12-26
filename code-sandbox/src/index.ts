@@ -23,6 +23,8 @@ type RegisterCommandRequest = {
 
 app.post("/register_command", async (c) => {
   const request = await c.req.json<RegisterCommandRequest>()
+  console.log("[registerCommand] request: ", request)
+
   await registerCommand(
     c.env,
     request.command_name,
@@ -30,15 +32,20 @@ app.post("/register_command", async (c) => {
     request.isCode,
     request.author_id
   )
+
+  return c.json({
+    error: null,
+  })
 })
 
 type RunCommandRequest = {
   command_name: string
+  isCode: boolean
 }
 
 app.post("/run_command", async (c) => {
   const request = await c.req.json<RunCommandRequest>()
-  const command = await runCommand(c.env, request.command_name)
+  const command = await runCommand(c.env, request.command_name, request.isCode)
 
   if (!command) {
     return c.json(
