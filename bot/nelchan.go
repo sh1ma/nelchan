@@ -1,4 +1,4 @@
-package main
+package nelchanbot
 
 import (
 	"bytes"
@@ -7,54 +7,90 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/signal"
 	"regexp"
 	"strings"
-	"syscall"
 
 	"github.com/bwmarrin/discordgo"
 )
 
-// Variables used for command line parameters
-var (
-	Token string
-)
-
-func main() {
-	Token = os.Getenv("DISCORD_BOT_TOKEN")
-	// Create a new Discord session using the provided bot token.
-	dg, err := discordgo.New("Bot " + Token)
-	if err != nil {
-		fmt.Println("error creating Discord session,", err)
-		return
-	}
-
-	// Register the messageCreate func as a callback for MessageCreate events.
-	dg.AddHandler(messageCreate)
-
-	// In this example, we only care about receiving message events.
-	dg.Identify.Intents = discordgo.IntentsGuildMessages
-
-	// Open a websocket connection to Discord and begin listening.
-	err = dg.Open()
-	if err != nil {
-		fmt.Println("error opening connection,", err)
-		return
-	}
-
-	// Wait here until CTRL-C or other term signal is received.
-	fmt.Println("Bot is now running.  Press CTRL-C to exit.")
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-	<-sc
-
-	// Cleanly close down the Discord session.
-	dg.Close()
+type NelchanConfig struct {
+	Env            string
+	CodeSandboxURL string
 }
 
-// This function will be called (due to AddHandler above) every time a new
-// message is created on any channel that the authenticated bot has access to.
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+type Nelchan struct {
+	Config  NelchanConfig
+	Discord *discordgo.Session
+}
+
+func NewNelchan() (*Nelchan, error) {
+	discordToken := os.Getenv("DISCORD_BOT_TOKEN")
+	if discordToken == "" {
+		return nil, fmt.Errorf("DISCORD_BOT_TOKEN is not set")
+	}
+
+	env := os.Getenv("ENV")
+	if env == "" {
+		env = "development"
+	}
+
+	var codeSandboxURL string
+	if env == "production" {
+		codeSandboxURL = "https://my-sandbox.sh1ma.workers.dev"
+	} else {
+		codeSandboxURL = "http://localhost:8787"
+	}
+
+	discord, err := discordgo.New("Bot " + discordToken)
+	if err != nil {
+		return nil, fmt.Errorf("error creating Discord session: %w", err)
+	}
+
+	config := NelchanConfig{
+		Env:            env,
+		CodeSandboxURL: codeSandboxURL,
+	}
+
+	return &Nelchan{
+		Config:  config,
+		Discord: discord,
+	}, nil
+}
+
+func (n *Nelchan) PrintConfig() {
+	fmt.Println("ねるちゃんの設定:")
+	fmt.Println("Env:", n.Config.Env)
+	fmt.Println("CodeSandboxURL:", n.Config.CodeSandboxURL)
+}
+
+func (n *Nelchan) SetIntents(intents discordgo.Intent) {
+	n.Discord.Identify.Intents = intents
+}
+
+func (n *Nelchan) Start() error {
+	n.PrintConfig()
+	n.Discord.AddHandler(n.HandleMessageCreate)
+	n.SetIntents(discordgo.IntentsGuildMessages)
+
+	err := n.Discord.Open()
+	if err != nil {
+		return fmt.Errorf("ねるちゃんの起動に失敗しました: %w", err)
+	}
+	return nil
+}
+
+func (n *Nelchan) Close() error {
+	fmt.Println("ねるちゃんを停止します...")
+	err := n.Discord.Close()
+	if err != nil {
+		return fmt.Errorf("ねるちゃんの停止に失敗しました: %w", err)
+	}
+	fmt.Println("ねるちゃんを停止しました")
+	fmt.Println("プログラムを終了します...")
+	return nil
+}
+
+func (n *Nelchan) HandleMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Ignore all messages created by the bot itself
 	// This isn't required in this specific example but it's a good practice.
@@ -78,10 +114,15 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
+		if strings.HasPrefix(m.Content, "!exec") {
+			handleExecCommand(s, m)
+			return
+		}
+
 		// Handle code commands (with ! prefix)
 		commandName := strings.TrimPrefix(m.Content, "!")
 		// Split by space to get just the command name (ignore arguments for now)
-		commandParts := strings.SplitN(commandName, " ", 2)
+		commandParts := strings.Split(commandName, " ")
 		commandName = commandParts[0]
 
 		if commandName == "" {
@@ -90,7 +131,18 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		fmt.Printf("code command received: %s\n", commandName)
 
-		result, err := runCommandAPI(commandName, true)
+		vars := map[string]string{
+			"username":    m.Author.DisplayName(),
+			"user_id":     m.Author.ID,
+			"user_avatar": m.Author.Avatar,
+		}
+		// varsにargsを追加
+		// arg1, arg2, arg3, ...
+		for i := 1; i < len(commandParts); i++ {
+			vars[fmt.Sprintf("arg%d", i)] = commandParts[i]
+		}
+		result, err := runCommandAPI(commandName, true, vars)
+
 		if err != nil {
 			fmt.Println("error running command,", err)
 			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
@@ -124,7 +176,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	fmt.Printf("text command received: %s\n", commandName)
 
-	result, err := runCommandAPI(commandName, false)
+	result, err := runCommandAPI(commandName, false, nil)
 	if err != nil {
 		fmt.Println("error running text command,", err)
 		return
@@ -224,6 +276,46 @@ func handleRegisterCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
 	_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("コマンド「%s」を登録しました！", commandName))
 }
 
+func handleExecCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
+	// Remove the "!exec " prefix
+	content := strings.TrimPrefix(m.Content, "!exec ")
+
+	// Split by space to get command name and code
+	parts := strings.SplitN(content, " ", 2)
+	if len(parts) < 2 {
+		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !exec <コマンド名> <コード>")
+		return
+	}
+
+	commandName := strings.TrimSpace(parts[0])
+	code := strings.TrimSpace(parts[1])
+
+	if commandName == "" || code == "" {
+		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !exec <コマンド名> <コード>")
+		return
+	}
+
+	result, err := runCommandAPI(commandName, true, nil)
+	if err != nil {
+		fmt.Println("error running command,", err)
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
+		return
+	}
+
+	if result == nil {
+		// Code command not found, don't respond
+		return
+	}
+
+	_, err = s.ChannelMessageSend(m.ChannelID, result.Content)
+	if err != nil {
+		fmt.Println("error sending message,", err)
+		return
+	}
+
+	fmt.Printf("message sent: %s\n", result.Content)
+}
+
 // extractCodeFromBackticks extracts code from markdown code blocks
 // Supports the following formats:
 // - ```code``` (inline triple backticks)
@@ -259,8 +351,9 @@ type CodeSandboxResponse struct {
 }
 
 type RunCommandRequest struct {
-	CommandName string `json:"command_name"`
-	IsCode      bool   `json:"isCode"`
+	CommandName string            `json:"command_name"`
+	IsCode      bool              `json:"isCode"`
+	Vars        map[string]string `json:"vars"`
 }
 
 type RegisterCommandRequest struct {
@@ -340,10 +433,11 @@ type CommandResult struct {
 	Content string `json:"content"`
 }
 
-func runCommandAPI(commandName string, isCode bool) (*CommandResult, error) {
+func runCommandAPI(commandName string, isCode bool, vars map[string]string) (*CommandResult, error) {
 	requestBody := RunCommandRequest{
 		CommandName: commandName,
 		IsCode:      isCode,
+		Vars:        vars,
 	}
 	requestBodyJSON, err := json.Marshal(requestBody)
 	if err != nil {
@@ -424,27 +518,3 @@ type Result struct {
 	Chart      string `json:"chart"`
 	Data       string `json:"data"`
 }
-
-// type Result struct {
-// interface ExecutionResult {
-//   code: string;
-//   logs: {
-//     stdout: string[];
-//     stderr: string[];
-//   };
-//   error?: ExecutionError;
-//   executionCount?: number;
-//   results: Array<{
-//     text?: string;
-//     html?: string;
-//     png?: string;
-//     jpeg?: string;
-//     svg?: string;
-//     latex?: string;
-//     markdown?: string;
-//     javascript?: string;
-//     json?: any;
-//     chart?: ChartData;
-//     data?: any;
-//   }>;
-// }

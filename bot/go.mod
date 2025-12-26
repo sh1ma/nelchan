@@ -1,4 +1,4 @@
-module nelchan/bot
+module nelchanbot
 
 go 1.25.1
 

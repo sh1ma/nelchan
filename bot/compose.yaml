@@ -1,0 +1,6 @@
+services:
+  nelchan:
+    build:
+      context: .
+    env_file:
+      - .env
