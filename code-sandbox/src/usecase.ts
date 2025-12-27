@@ -470,7 +470,14 @@ export const autoStoreMemory = async (
   console.log("[autoStoreMemory] text: ", text)
 
   // 1. Ask LLM to extract memorable information
-  const extractionPrompt = `以下のテキストから、意味のある情報を抽出してください。情報はできるだけ多く抽出してください。
+  const extractionPrompt = `以下のテキストから、意味のある情報を抽出してください。
+
+## ルール
+
+- 情報はできるだけ多く抽出してください。
+- ユーザと情報を紐づけてください
+
+
 各情報について、内容を表すcontentを生成してください。
 [{"content": "..."}, ...]
 記憶すべき情報がない場合は空配列[]を返してください。

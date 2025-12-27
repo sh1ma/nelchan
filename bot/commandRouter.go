@@ -2,7 +2,10 @@ package nelchanbot
 
 import (
 	"fmt"
+	"math/rand"
+	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -13,16 +16,18 @@ type CommandHandler func(s *discordgo.Session, m *discordgo.MessageCreate, cmd *
 // CommandRouter handles routing of commands to their respective handlers
 type CommandRouter struct {
 	parser              *CommandParser
+	apiClient           *CommandAPIClient
 	commands            map[string]CommandHandler
 	codeFallbackHandler CommandHandler
 	textFallbackHandler CommandHandler
 }
 
 // NewCommandRouter creates a new CommandRouter instance
-func NewCommandRouter(parser *CommandParser) *CommandRouter {
+func NewCommandRouter(parser *CommandParser, apiClient *CommandAPIClient) *CommandRouter {
 	return &CommandRouter{
-		parser:   parser,
-		commands: make(map[string]CommandHandler),
+		parser:    parser,
+		apiClient: apiClient,
+		commands:  make(map[string]CommandHandler),
 	}
 }
 
@@ -92,6 +97,9 @@ func (r *CommandRouter) handleTextCommand(s *discordgo.Session, m *discordgo.Mes
 		return
 	}
 
+	// Try to remember this message (30% chance)
+	r.tryRememberMessage(m)
+
 	// Create a SlashCommand-like structure for text commands
 	parts := strings.SplitN(content, " ", 2)
 	cmd := &SlashCommand{
@@ -108,4 +116,98 @@ func (r *CommandRouter) handleTextCommand(s *discordgo.Session, m *discordgo.Mes
 	if r.textFallbackHandler != nil {
 		r.textFallbackHandler(s, m, cmd)
 	}
+}
+
+// Memory probability (30%)
+const memoryProbability = 0.30
+
+// URL pattern for detecting URL-only messages
+var urlOnlyPattern = regexp.MustCompile(`^\s*https?://\S+\s*$`)
+
+// tryRememberMessage attempts to store the message in memory with 30% probability
+func (r *CommandRouter) tryRememberMessage(m *discordgo.MessageCreate) {
+	content := strings.TrimSpace(m.Content)
+
+	// Check if message should be remembered
+	if !r.shouldRemember(content) {
+		return
+	}
+
+	// 30% probability check
+	if rand.Float64() > memoryProbability {
+		return
+	}
+
+	// Get username (prefer display name, fallback to username)
+	username := m.Author.GlobalName
+	if username == "" {
+		username = m.Author.Username
+	}
+
+	// Format: ユーザー「username」: message
+	memoryText := fmt.Sprintf("ユーザー「%s」: %s", username, content)
+
+	// Store memory asynchronously (don't block the message handler)
+	go func() {
+		if err := r.apiClient.AutoStoreMemory(memoryText); err != nil {
+			fmt.Printf("error storing memory: %v\n", err)
+		} else {
+			fmt.Printf("memory stored: %s\n", memoryText)
+		}
+	}()
+}
+
+// shouldRemember checks if the message content should be remembered
+func (r *CommandRouter) shouldRemember(content string) bool {
+	// Empty message
+	if content == "" {
+		return false
+	}
+
+	// URL-only message
+	if urlOnlyPattern.MatchString(content) {
+		return false
+	}
+
+	// Emoji-only message
+	if isEmojiOnly(content) {
+		return false
+	}
+
+	return true
+}
+
+// isEmojiOnly checks if the string contains only emojis (including Discord custom emojis)
+func isEmojiOnly(s string) bool {
+	// Discord custom emoji pattern: <:name:id> or <a:name:id>
+	discordEmojiPattern := regexp.MustCompile(`<a?:\w+:\d+>`)
+
+	// Remove Discord custom emojis
+	remaining := discordEmojiPattern.ReplaceAllString(s, "")
+	remaining = strings.TrimSpace(remaining)
+
+	// Check if remaining characters are all emoji or whitespace
+	for _, r := range remaining {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		// Check for Unicode emoji categories
+		if !isEmoji(r) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isEmoji checks if a rune is an emoji
+func isEmoji(r rune) bool {
+	// Common emoji ranges
+	return unicode.Is(unicode.So, r) || // Symbol, Other (includes many emojis)
+		unicode.Is(unicode.Sk, r) || // Symbol, Modifier
+		(r >= 0x1F300 && r <= 0x1F9FF) || // Miscellaneous Symbols and Pictographs, Emoticons, etc.
+		(r >= 0x2600 && r <= 0x26FF) || // Miscellaneous Symbols
+		(r >= 0x2700 && r <= 0x27BF) || // Dingbats
+		(r >= 0xFE00 && r <= 0xFE0F) || // Variation Selectors
+		(r >= 0x1F000 && r <= 0x1FFFF) // All emoji blocks
 }

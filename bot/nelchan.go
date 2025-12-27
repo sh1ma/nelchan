@@ -52,7 +52,7 @@ func NewNelchan() (*Nelchan, error) {
 
 	commandAPIClient := NewCommandAPIClient(codeSandboxURL)
 	commandParser := NewCommandParser()
-	commandRouter := NewCommandRouter(commandParser)
+	commandRouter := NewCommandRouter(commandParser, commandAPIClient)
 
 	n := &Nelchan{
 		Config:           config,

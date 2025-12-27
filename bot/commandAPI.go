@@ -164,3 +164,51 @@ func (c *CommandAPIClient) GetCommand(request GetCommandRequest) (*GetCommandInf
 
 	return getCommandResponse.Command, nil
 }
+
+// AutoMemoryRequest represents a request to auto-store memory
+type AutoMemoryRequest struct {
+	Text string `json:"text"`
+}
+
+// AutoMemoryResponse represents a response from auto-store memory
+type AutoMemoryResponse struct {
+	Error *string `json:"error"`
+	Count int     `json:"count"`
+}
+
+// AutoStoreMemory sends text to the automemory API to extract and store memories
+func (c *CommandAPIClient) AutoStoreMemory(text string) error {
+	url := c.CodeSandboxURL + "/automemory"
+
+	request := AutoMemoryRequest{Text: text}
+	requestBodyJSON, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("error marshalling request body: %w", err)
+	}
+
+	response, err := http.Post(url, "application/json", bytes.NewBuffer(requestBodyJSON))
+	if err != nil {
+		return fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if response.StatusCode != 200 {
+		return fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	var autoMemoryResponse AutoMemoryResponse
+	if err := json.Unmarshal(respBody, &autoMemoryResponse); err != nil {
+		return fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if autoMemoryResponse.Error != nil {
+		return fmt.Errorf("API error: %s", *autoMemoryResponse.Error)
+	}
+
+	return nil
+}
