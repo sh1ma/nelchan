@@ -64,11 +64,15 @@ export const runCommand = async (
     const ctx = await sandbox.createCodeContext({ language: "python" })
     try {
       const envEmbededCode = `
+import requests
 ${Object.entries(envVars)
   .map(([key, value]) => `${key}="${value}"`)
   .join("\n")}
 def cs(s: str):
     return f"\`\`\`{s}\`\`\`"
+
+def llm(prompt: str):
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/llm", json={"prompt": prompt}).json()["output"]
 
 ${result.code}
 `

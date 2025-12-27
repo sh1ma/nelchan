@@ -67,6 +67,45 @@ app.post("/run_command", async (c) => {
   })
 })
 
+type LLMRequest = {
+  prompt: string
+}
+
+app.post("/llm", async (c) => {
+  const request = await c.req.json<LLMRequest>()
+  console.log("[llm] request: ", request)
+
+  const response = await c.env.AI.run("@cf/openai/gpt-oss-20b", {
+    input: request.prompt,
+  })
+
+  console.log("[llm] response: ", response)
+
+  if (response.status !== "completed") {
+    return c.json(
+      {
+        error: "Failed to generate text",
+        output: null,
+      },
+      500
+    )
+  }
+
+  // 出力テキストを抽出
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const output = response.output as any[] | undefined
+  const messageOutput = output?.find((item) => item.type === "message")
+  const outputText =
+    messageOutput?.content?.find(
+      (item: { type: string }) => item.type === "output_text"
+    )?.text ?? null
+
+  return c.json({
+    error: null,
+    output: outputText,
+  })
+})
+
 type GetCommandRequest = {
   command_name: string
 }

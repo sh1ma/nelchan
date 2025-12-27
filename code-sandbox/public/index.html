@@ -288,6 +288,7 @@
         border: 1px solid var(--border-color);
         border-radius: 12px;
         padding: 1rem 1.25rem;
+        padding-right: 3.5rem;
         overflow-x: auto;
         margin: 1rem 0;
         position: relative;
@@ -297,11 +298,55 @@
         content: attr(data-lang);
         position: absolute;
         top: 0.5rem;
-        right: 0.75rem;
+        right: 3rem;
         font-size: 0.7rem;
         color: var(--text-muted);
         text-transform: uppercase;
         letter-spacing: 0.05em;
+      }
+
+      /* Copy Button */
+      .copy-btn {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        width: 2rem;
+        height: 2rem;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: all 0.2s ease;
+        color: var(--text-muted);
+      }
+
+      pre:hover .copy-btn {
+        opacity: 1;
+      }
+
+      .copy-btn:hover {
+        background: var(--accent-primary);
+        border-color: var(--accent-primary);
+        color: white;
+      }
+
+      .copy-btn:active {
+        transform: scale(0.95);
+      }
+
+      .copy-btn.copied {
+        background: var(--accent-tertiary);
+        border-color: var(--accent-tertiary);
+        color: var(--bg-primary);
+      }
+
+      .copy-btn svg {
+        width: 14px;
+        height: 14px;
       }
 
       code {
@@ -713,5 +758,46 @@ print("hello")
         <p>ねるちゃん Bot &copy; 2025</p>
       </footer>
     </div>
+
+    <script>
+      // SVG icons
+      const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>`
+
+      const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+      </svg>`
+
+      // Add copy buttons to all pre elements
+      document.querySelectorAll("pre").forEach((pre) => {
+        const btn = document.createElement("button")
+        btn.className = "copy-btn"
+        btn.innerHTML = copyIcon
+        btn.title = "コピー"
+
+        btn.addEventListener("click", async () => {
+          const code = pre.querySelector("code")
+          const text = code ? code.textContent : pre.textContent
+
+          try {
+            await navigator.clipboard.writeText(text)
+            btn.innerHTML = checkIcon
+            btn.classList.add("copied")
+            btn.title = "コピーしました！"
+
+            setTimeout(() => {
+              btn.innerHTML = copyIcon
+              btn.classList.remove("copied")
+              btn.title = "コピー"
+            }, 2000)
+          } catch (err) {
+            console.error("コピーに失敗しました:", err)
+          }
+        })
+
+        pre.appendChild(btn)
+      })
+    </script>
   </body>
 </html>
