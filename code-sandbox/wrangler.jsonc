@@ -55,8 +55,16 @@
 		}
 	],
 	"ai": {
-		"binding": "AI"
+		"binding": "AI",
+		"remote": true
 	},
+	"vpc_services": [
+		{
+			"binding": "YUKI_SERVICE",
+			"service_id": "019b5f59-2074-7f63-856e-42e1fa6796ac",
+			"remote": true
+		}
+	],
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

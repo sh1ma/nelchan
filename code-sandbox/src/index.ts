@@ -1,3 +1,4 @@
+import { routeAgentRequest } from "agents"
 import { Hono } from "hono"
 import { logger } from "hono/logger"
 import {
@@ -11,6 +12,7 @@ import {
 } from "./usecase"
 
 export { Sandbox } from "@cloudflare/sandbox"
+export { NelchanAgent } from "./agent"
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -256,6 +258,25 @@ app.post("/mllm", async (c) => {
       500
     )
   }
+})
+
+type LLMWithAgentRequest = {
+  prompt: string
+}
+
+// /llmWithAgent は内部でAgentにプロキシする
+app.post("/llmWithAgent", async (c) => {
+  const agentResponse = await routeAgentRequest(c.req.raw, c.env)
+  if (agentResponse) {
+    return agentResponse
+  }
+  return c.json(
+    {
+      error: "Agent not found",
+      output: null,
+    },
+    500
+  )
 })
 
 export default {

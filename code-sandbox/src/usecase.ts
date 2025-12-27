@@ -88,6 +88,9 @@ def automemory(text: str):
 def mllm(prompt: str, top_k: int = 6):
   return requests.post("https://my-sandbox.sh1ma.workers.dev/mllm", json={"prompt": prompt, "topK": top_k}).json()["output"]
 
+def llmWithAgent(prompt: str):
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/llmWithAgent", json={"prompt": prompt}).json()["output"]
+
 ${result.code}
 `
       console.log(envEmbededCode)
