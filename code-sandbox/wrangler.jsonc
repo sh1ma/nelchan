@@ -72,7 +72,14 @@
 	"assets": {
 		"directory": "./public/",
 		"binding": "ASSETS"
-	}
+	},
+	"vectorize": [
+		{
+			"binding": "VECTORIZE",
+			"index_name": "nelchan-memory-index",
+			"remote": true
+		}
+	]
 	/**
 	 * Service Bindings (communicate between multiple Workers)
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings

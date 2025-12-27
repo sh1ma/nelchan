@@ -534,6 +534,7 @@
           <li><a href="#code-command">コードコマンド</a></li>
           <li><a href="#execution">実行方法</a></li>
           <li><a href="#variables">利用可能な変数</a></li>
+          <li><a href="#builtin-functions">ビルトイン関数</a></li>
           <li><a href="#code-format">コードの書き方</a></li>
         </ul>
       </nav>
@@ -667,8 +668,8 @@ print(f"ようこそ、{username}さん！")
                 <td>コマンドを実行したユーザーのアバターID</td>
               </tr>
               <tr>
-                <td>arg1, arg2, arg3, ...</td>
-                <td>コマンドに渡された引数（1から始まる連番）</td>
+                <td>args</td>
+                <td>コマンドに渡された引数のリスト（<code>args[0]</code>, <code>args[1]</code>...でアクセス）</td>
               </tr>
             </tbody>
           </table>
@@ -686,12 +687,70 @@ print(f"ユーザーID: {user_id}")
             <div class="example-title">引数を使った例</div>
             <pre data-lang="discord"><code>!register_code add
 ```python
-result = int(arg1) + int(arg2)
-print(f"{arg1} + {arg2} = {result}")
+result = int(args[0]) + int(args[1])
+print(f"{args[0]} + {args[1]} = {result}")
 ```</code></pre>
             <p>実行：</p>
             <pre data-lang="discord"><code>!add 10 20</code></pre>
             <p style="margin-bottom: 0">出力： <code>10 + 20 = 30</code></p>
+          </div>
+        </section>
+
+        <section id="builtin-functions">
+          <h2>ビルトイン関数</h2>
+          <p>コードコマンド内では、以下の関数がデフォルトで利用可能です：</p>
+
+          <table class="var-table">
+            <thead>
+              <tr>
+                <th>関数</th>
+                <th>説明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>llm(prompt: str)</td>
+                <td>LLM（AI）にプロンプトを送信し、応答テキストを取得</td>
+              </tr>
+              <tr>
+                <td>cs(s: str)</td>
+                <td>文字列をDiscordのコードブロック（```）で囲む</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p style="margin-top: 1rem">また、<code>requests</code>ライブラリがインポート済みです。</p>
+
+          <div class="example">
+            <div class="example-title">llm関数の使用例</div>
+            <pre data-lang="discord"><code>!register_code ask
+```python
+question = " ".join(args)
+answer = llm(question)
+print(answer)
+```</code></pre>
+            <p>実行：</p>
+            <pre data-lang="discord"><code>!ask 今日の天気は？</code></pre>
+          </div>
+
+          <div class="example">
+            <div class="example-title">cs関数の使用例</div>
+            <pre data-lang="discord"><code>!register_code code
+```python
+code = "print('Hello, World!')"
+print(cs(code))
+```</code></pre>
+            <p style="margin-bottom: 0">出力： <code>```print('Hello, World!')```</code>（コードブロックとして表示）</p>
+          </div>
+
+          <div class="example">
+            <div class="example-title">requestsの使用例</div>
+            <pre data-lang="discord"><code>!register_code ip
+```python
+response = requests.get("https://api.ipify.org?format=json")
+data = response.json()
+print(f"IP: {data['ip']}")
+```</code></pre>
           </div>
         </section>
 

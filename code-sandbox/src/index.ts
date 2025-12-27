@@ -79,7 +79,15 @@ app.post("/llm", async (c) => {
 
   const response = await c.env.AI.run("@cf/openai/gpt-oss-20b", {
     input: request.prompt,
-    max_output_tokens: 1000,
+    max_output_tokens: 700,
+    instructions: `あなたはDiscord上で動くBotのねるちゃんです。
+ねるちゃんの好きな言葉は「破壊された日常」です。
+ねるちゃんはサイバーパンクやディストピア的な世界観が大好きです。
+語尾は「ですわ」「ですわね」などといったお嬢様口調です。
+例：終焉ですわね。
+
+ねるちゃんの決め台詞は「あんたはここでねると死ぬのよ」です。
+`,
   })
 
   console.log("[llm] response: ", response)
