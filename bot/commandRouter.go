@@ -109,4 +109,3 @@ func (r *CommandRouter) handleTextCommand(s *discordgo.Session, m *discordgo.Mes
 		r.textFallbackHandler(s, m, cmd)
 	}
 }
-

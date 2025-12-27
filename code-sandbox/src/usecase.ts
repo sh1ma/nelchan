@@ -69,9 +69,10 @@ ${Object.entries(envVars)
   .join("\n")}
 def cs(s: str):
     return f"\`\`\`{s}\`\`\`"
+
 ${result.code}
 `
-
+      console.log(envEmbededCode)
       const executionResult = await sandbox.runCode(envEmbededCode, {
         context: ctx,
       })
@@ -203,6 +204,69 @@ export const registerCodeCommand = async (
  * @param commandContent - The content of the command
  * @param authorID - The ID of the author
  */
+export type GetCommandResult = {
+  name: string
+  isCode: boolean
+  content: string
+}
+
+/**
+ * Get command content by name
+ * @param env - The environment
+ * @param commandName - The name of the command
+ * @returns The command content or undefined if not found
+ */
+export const getCommand = async (
+  env: Env,
+  commandName: string
+): Promise<GetCommandResult | undefined> => {
+  // First try to find a code command
+  const codeResult = await env.nelchan_db
+    .prepare(
+      `SELECT 
+        c.id, 
+        c.name, 
+        co.code 
+        FROM commands c  
+        INNER JOIN codes co ON c.id = co.command_id 
+        WHERE c.name = ? LIMIT 1`
+    )
+    .bind(commandName)
+    .first<{ id: string; name: string; code: string }>()
+
+  if (codeResult && codeResult.code) {
+    return {
+      name: codeResult.name,
+      isCode: true,
+      content: codeResult.code,
+    }
+  }
+
+  // Then try to find a text command
+  const textResult = await env.nelchan_db
+    .prepare(
+      `SELECT 
+        c.id, 
+        c.name, 
+        d.text 
+        FROM commands c  
+        INNER JOIN dictionaries d ON c.id = d.command_id 
+        WHERE c.name = ? LIMIT 1`
+    )
+    .bind(commandName)
+    .first<{ id: string; name: string; text: string }>()
+
+  if (textResult && textResult.text) {
+    return {
+      name: textResult.name,
+      isCode: false,
+      content: textResult.text,
+    }
+  }
+
+  return undefined
+}
+
 export const registerTextCommand = async (
   env: Env,
   commandName: string,

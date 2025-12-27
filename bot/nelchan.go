@@ -63,8 +63,11 @@ func NewNelchan() (*Nelchan, error) {
 	// Register built-in commands
 	commandRouter.
 		AddCommand("register", n.handleRegisterCommand).
+		AddCommand("reg", n.handleRegisterCommand).
 		AddCommand("register_code", n.handleRegisterCodeCommand).
+		AddCommand("regc", n.handleRegisterCodeCommand).
 		AddCommand("exec", n.handleExecCommand).
+		AddCommand("show", n.handleShowCommand).
 		SetCodeFallback(n.handleDynamicCodeCommand).
 		SetTextFallback(n.handleTextCommand)
 
@@ -250,6 +253,54 @@ func (n *Nelchan) handleDynamicCodeCommand(s *discordgo.Session, m *discordgo.Me
 	}
 
 	fmt.Printf("message sent: %s\n", result.Content)
+}
+
+// handleShowCommand handles the !show command
+// Usage: !show <command_name>
+// Displays the content of a registered command (code as snippet, text as plain text)
+func (n *Nelchan) handleShowCommand(s *discordgo.Session, m *discordgo.MessageCreate, cmd *SlashCommand) {
+	if len(cmd.Args) < 1 {
+		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !show <コマンド名>")
+		return
+	}
+
+	commandName := cmd.GetArg(0)
+
+	if commandName == "" {
+		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !show <コマンド名>")
+		return
+	}
+
+	result, err := n.CommandAPIClient.GetCommand(GetCommandRequest{
+		CommandName: commandName,
+	})
+	if err != nil {
+		fmt.Println("error getting command,", err)
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
+		return
+	}
+
+	if result == nil {
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("コマンド「%s」は見つかりませんでした", commandName))
+		return
+	}
+
+	var message string
+	if result.IsCode {
+		// Output as code snippet
+		message = fmt.Sprintf("コマンド「%s」のコード:\n```python\n%s\n```", commandName, result.Content)
+	} else {
+		// Output as plain text
+		message = fmt.Sprintf("コマンド「%s」のテキスト:\n%s", commandName, result.Content)
+	}
+
+	_, err = s.ChannelMessageSend(m.ChannelID, message)
+	if err != nil {
+		fmt.Println("error sending message,", err)
+		return
+	}
+
+	fmt.Printf("show command: name=%s, isCode=%v\n", commandName, result.IsCode)
 }
 
 // handleTextCommand handles text commands (without ! prefix)

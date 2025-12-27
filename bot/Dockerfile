@@ -3,7 +3,7 @@ FROM golang:1.25.5-bookworm
 WORKDIR /app
 
 
-ENV ENV=production
+ENV ENV=development
 
 
 

@@ -65,8 +65,8 @@ func (p *CommandParser) ParseSlashCommand(message string) *SlashCommand {
 }
 
 // ParseSlashCommandWithBody parses a slash command where the body may contain spaces or newlines
-// Example: "!register_code name print('hello world')" -> SlashCommand{Name: "register_code", Args: ["name", "print('hello world')"]}
-// The second argument onwards is treated as a single body (useful for code commands)
+// Example: "!register_code name print('hello\nworld')" -> SlashCommand{Name: "register_code", Args: ["name", "print('hello\nworld')"]}
+// The last argument (body) preserves newlines, useful for code commands
 func (p *CommandParser) ParseSlashCommandWithBody(message string, argCount int) *SlashCommand {
 	message = strings.TrimSpace(message)
 
@@ -78,12 +78,19 @@ func (p *CommandParser) ParseSlashCommandWithBody(message string, argCount int) 
 	// Remove the "!" prefix
 	content := strings.TrimPrefix(message, "!")
 
-	// Replace newlines with spaces to treat them as separators
-	// This allows "!cmd arg1\narg2" to be parsed as "!cmd arg1 arg2"
-	normalizedContent := strings.ReplaceAll(content, "\n", " ")
+	// Find the first line to extract command name and initial args
+	firstLineEnd := strings.Index(content, "\n")
+	var firstLine, rest string
+	if firstLineEnd == -1 {
+		firstLine = content
+		rest = ""
+	} else {
+		firstLine = content[:firstLineEnd]
+		rest = content[firstLineEnd+1:] // Preserve remaining content with newlines
+	}
 
-	// Split by space with limit
-	parts := strings.SplitN(normalizedContent, " ", argCount+1)
+	// Split the first line by space with limit
+	parts := strings.SplitN(firstLine, " ", argCount+1)
 	if len(parts) == 0 {
 		return nil
 	}
@@ -93,6 +100,17 @@ func (p *CommandParser) ParseSlashCommandWithBody(message string, argCount int) 
 		trimmed := strings.TrimSpace(parts[i])
 		if trimmed != "" {
 			args = append(args, trimmed)
+		}
+	}
+
+	// If we have remaining content (after newline), append it to the last argument
+	if rest != "" {
+		if len(args) > 0 {
+			// Append rest to the last argument
+			args[len(args)-1] = args[len(args)-1] + "\n" + rest
+		} else {
+			// No args yet, rest becomes the first arg
+			args = append(args, rest)
 		}
 	}
 

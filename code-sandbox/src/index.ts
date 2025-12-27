@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { logger } from "hono/logger"
-import { registerCommand, runCommand } from "./usecase"
+import { getCommand, registerCommand, runCommand } from "./usecase"
 
 export { Sandbox } from "@cloudflare/sandbox"
 
@@ -40,7 +40,7 @@ app.post("/register_command", async (c) => {
 
 type RunCommandRequest = {
   command_name: string
-  isCode: boolean
+  is_code: boolean
   vars: Record<string, string>
 }
 
@@ -50,7 +50,7 @@ app.post("/run_command", async (c) => {
     c.executionCtx,
     c.env,
     request.command_name,
-    request.isCode,
+    request.is_code,
     request.vars
   )
 
@@ -58,6 +58,32 @@ app.post("/run_command", async (c) => {
     return c.json(
       {
         error: "Command not found",
+      },
+      404
+    )
+  }
+
+  return c.json({
+    error: null,
+    command,
+  })
+})
+
+type GetCommandRequest = {
+  command_name: string
+}
+
+app.post("/get_command", async (c) => {
+  const request = await c.req.json<GetCommandRequest>()
+  console.log("[getCommand] request: ", request)
+
+  const command = await getCommand(c.env, request.command_name)
+
+  if (!command) {
+    return c.json(
+      {
+        error: "Command not found",
+        command: null,
       },
       404
     )

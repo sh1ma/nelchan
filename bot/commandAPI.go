@@ -62,7 +62,7 @@ func (c *CommandAPIClient) RegisterCommand(request RegisterCommandRequest) error
 
 type RunCommandRequest struct {
 	CommandName string            `json:"command_name"`
-	IsCode      bool              `json:"isCode"`
+	IsCode      bool              `json:"is_code"`
 	Vars        map[string]string `json:"vars"`
 }
 
@@ -111,4 +111,55 @@ type CommandResult struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Content string `json:"content"`
+}
+
+type GetCommandRequest struct {
+	CommandName string `json:"command_name"`
+}
+
+type GetCommandResponse struct {
+	Error   *string         `json:"error"`
+	Command *GetCommandInfo `json:"command"`
+}
+
+type GetCommandInfo struct {
+	Name    string `json:"name"`
+	IsCode  bool   `json:"isCode"`
+	Content string `json:"content"`
+}
+
+func (c *CommandAPIClient) GetCommand(request GetCommandRequest) (*GetCommandInfo, error) {
+	url := c.CodeSandboxURL + "/get_command"
+
+	requestBodyJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling request body: %w", err)
+	}
+
+	response, err := http.Post(url, "application/json", bytes.NewBuffer(requestBodyJSON))
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if response.StatusCode == 404 {
+		return nil, nil // Command not found
+	}
+
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	}
+
+	var getCommandResponse GetCommandResponse
+	err = json.Unmarshal(respBody, &getCommandResponse)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	return getCommandResponse.Command, nil
 }

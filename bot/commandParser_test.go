@@ -184,7 +184,25 @@ func TestParseSlashCommandWithBody(t *testing.T) {
 			argCount: 2,
 			expected: &SlashCommand{
 				Name: "register_code",
-				Args: []string{"test", "print('hello')"},
+				Args: []string{"test\nprint('hello')"},
+			},
+		},
+		{
+			name:     "register_code with arg and newline body",
+			input:    "!register_code test code\nprint('hello')\nprint('world')",
+			argCount: 2,
+			expected: &SlashCommand{
+				Name: "register_code",
+				Args: []string{"test", "code\nprint('hello')\nprint('world')"},
+			},
+		},
+		{
+			name:     "register_code with multiline code preserves newlines",
+			input:    "!register_code mytest\nx = 1\ny = 2\nprint(x + y)",
+			argCount: 2,
+			expected: &SlashCommand{
+				Name: "register_code",
+				Args: []string{"mytest\nx = 1\ny = 2\nprint(x + y)"},
 			},
 		},
 		{
