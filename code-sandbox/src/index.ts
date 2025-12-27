@@ -1,6 +1,14 @@
 import { Hono } from "hono"
 import { logger } from "hono/logger"
-import { getCommand, registerCommand, runCommand } from "./usecase"
+import {
+  autoStoreMemory,
+  getCommand,
+  getMemory,
+  memoryLLM,
+  registerCommand,
+  runCommand,
+  storeMemory,
+} from "./usecase"
 
 export { Sandbox } from "@cloudflare/sandbox"
 
@@ -141,6 +149,113 @@ app.post("/get_command", async (c) => {
     error: null,
     command,
   })
+})
+
+type MemoryRequest = {
+  key: string
+  content: string
+}
+
+app.post("/memory", async (c) => {
+  const request = await c.req.json<MemoryRequest>()
+  console.log("[memory] request: ", request)
+
+  try {
+    await storeMemory(c.env, request.key, request.content)
+    return c.json({
+      error: null,
+      success: true,
+    })
+  } catch (error) {
+    console.error("[memory] error: ", error)
+    return c.json(
+      {
+        error: "Failed to store memory",
+        success: false,
+      },
+      500
+    )
+  }
+})
+
+type MgetRequest = {
+  query: string
+  topK?: number
+}
+
+app.post("/mget", async (c) => {
+  const request = await c.req.json<MgetRequest>()
+  console.log("[mget] request: ", request)
+
+  try {
+    const results = await getMemory(c.env, request.query, request.topK ?? 3)
+    return c.json({
+      error: null,
+      results,
+    })
+  } catch (error) {
+    console.error("[mget] error: ", error)
+    return c.json(
+      {
+        error: "Failed to get memory",
+        results: [],
+      },
+      500
+    )
+  }
+})
+
+type AutoMemoryRequest = {
+  text: string
+}
+
+app.post("/automemory", async (c) => {
+  const request = await c.req.json<AutoMemoryRequest>()
+  console.log("[automemory] request: ", request)
+
+  try {
+    const count = await autoStoreMemory(c.env, request.text)
+    return c.json({
+      error: null,
+      count,
+    })
+  } catch (error) {
+    console.error("[automemory] error: ", error)
+    return c.json(
+      {
+        error: "Failed to auto-store memory",
+        count: 0,
+      },
+      500
+    )
+  }
+})
+
+type MLLMRequest = {
+  prompt: string
+  topK?: number
+}
+
+app.post("/mllm", async (c) => {
+  const request = await c.req.json<MLLMRequest>()
+  console.log("[mllm] request: ", request)
+
+  try {
+    const output = await memoryLLM(c.env, request.prompt, request.topK ?? 3)
+    return c.json({
+      error: null,
+      output,
+    })
+  } catch (error) {
+    console.error("[mllm] error: ", error)
+    return c.json(
+      {
+        error: "Failed to generate response with memory",
+        output: null,
+      },
+      500
+    )
+  }
 })
 
 export default {

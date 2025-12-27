@@ -192,7 +192,7 @@ func (n *Nelchan) handleExecCommand(s *discordgo.Session, m *discordgo.MessageCr
 	}
 
 	vars := map[string]string{
-		"username":    m.Author.DisplayName(),
+		"username":    m.Author.GlobalName,
 		"user_id":     m.Author.ID,
 		"user_avatar": m.Author.Avatar,
 	}

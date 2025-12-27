@@ -62,7 +62,10 @@ export const runCommand = async (
   if (isCode && result.code) {
     const randomString = crypto.randomUUID()
     const sandbox = getSandbox(env.Sandbox, randomString)
-    const ctx = await sandbox.createCodeContext({ language: "python" })
+    const ctx = await sandbox.createCodeContext({
+      language: "python",
+      timeout: 10000,
+    })
     try {
       const envEmbededCode = `
 import requests
@@ -75,6 +78,15 @@ def cs(s: str):
 
 def llm(prompt: str):
   return requests.post("https://my-sandbox.sh1ma.workers.dev/llm", json={"prompt": prompt}).json()["output"]
+
+def mget(query: str, top_k: int = 6):
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/mget", json={"query": query, "topK": top_k}).json()["results"]
+
+def automemory(text: str):
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/automemory", json={"text": text}).json()["count"]
+
+def mllm(prompt: str, top_k: int = 6):
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/mllm", json={"prompt": prompt, "topK": top_k}).json()["output"]
 
 ${result.code}
 `
@@ -349,4 +361,243 @@ export const registerTextCommand = async (
 
     console.log("[registerTextCommand] command registered")
   }
+}
+
+/**
+ * Store a memory with vector embeddings for RAG
+ * @param env - The environment
+ * @param id - The unique ID for the memory (UUID)
+ * @param content - The content to store
+ */
+export const storeMemory = async (env: Env, id: string, content: string) => {
+  console.log("[storeMemory] id: ", id)
+  console.log("[storeMemory] content: ", content)
+
+  // 1. Generate embedding using Workers AI
+  const embeddingResponse = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
+    text: [content],
+  })
+
+  if (!("data" in embeddingResponse) || !embeddingResponse.data) {
+    throw new Error("Failed to generate embedding")
+  }
+
+  const embedding = embeddingResponse.data[0]
+
+  // 2. Upsert vector into Vectorize
+  await env.VECTORIZE.upsert([
+    {
+      id,
+      values: embedding,
+      metadata: { content },
+    },
+  ])
+
+  console.log("[storeMemory] memory stored successfully")
+}
+
+/**
+ * Get memories by semantic search
+ * @param env - The environment
+ * @param query - The query to search for
+ * @param topK - The number of results to return (default: 3)
+ * @returns Array of matching memories with content and score
+ */
+export const getMemory = async (
+  env: Env,
+  query: string,
+  topK: number = 6
+): Promise<{ id: string; content: string; score: number }[]> => {
+  console.log("[getMemory] query: ", query)
+
+  // 1. Generate embedding for query
+  const embeddingResponse = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
+    text: [query],
+  })
+
+  if (!("data" in embeddingResponse) || !embeddingResponse.data) {
+    throw new Error("Failed to generate embedding")
+  }
+
+  const embedding = embeddingResponse.data[0]
+
+  // 2. Query Vectorize for similar vectors
+  const results = await env.VECTORIZE.query(embedding, {
+    topK,
+    returnMetadata: "all",
+  })
+
+  console.log("[getMemory] results: ", results)
+
+  return results.matches.map((m) => ({
+    id: m.id,
+    content: (m.metadata?.content as string) ?? "",
+    score: m.score,
+  }))
+}
+
+/**
+ * Extract output text from Workers AI response
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const extractLLMOutput = (response: any): string | null => {
+  if (response.status !== "completed") {
+    return null
+  }
+  const output = response.output as
+    | { type: string; content?: { type: string; text?: string }[] }[]
+    | undefined
+  const messageOutput = output?.find((item) => item.type === "message")
+  return (
+    messageOutput?.content?.find((item) => item.type === "output_text")?.text ??
+    null
+  )
+}
+
+/**
+ * Auto-extract and store memories from text using LLM
+ * @param env - The environment
+ * @param text - The text to extract memories from
+ * @returns Number of memories stored
+ */
+export const autoStoreMemory = async (
+  env: Env,
+  text: string
+): Promise<number> => {
+  console.log("[autoStoreMemory] text: ", text)
+
+  // 1. Ask LLM to extract memorable information
+  const extractionPrompt = `以下のテキストから、意味のある情報を抽出してください。情報はできるだけ多く抽出してください。
+各情報について、内容を表すcontentを生成してください。
+[{"content": "..."}, ...]
+記憶すべき情報がない場合は空配列[]を返してください。
+
+
+テキスト:
+${text}`
+
+  const response = await env.AI.run(
+    "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+    {
+      messages: [
+        {
+          role: "system",
+          content: extractionPrompt,
+        },
+        {
+          role: "user",
+          content: extractionPrompt,
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "memories",
+          schema: {
+            type: "object",
+            properties: {
+              memories: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    content: {
+                      type: "string",
+                      description: "内容テキスト",
+                    },
+                  },
+                  required: ["content"],
+                },
+              },
+            },
+            required: ["memories"],
+          },
+        },
+      },
+    }
+  )
+
+  const outputText = response.response ?? null
+  console.log("[autoStoreMemory] LLM output: ", outputText)
+
+  if (!outputText) {
+    console.log("[autoStoreMemory] No output from LLM")
+    return 0
+  }
+
+  // 2. Parse JSON and store each memory
+  try {
+    // 変更しないこと
+    const { memories } = outputText as unknown as {
+      memories: { content: string }[]
+    }
+
+    if (!Array.isArray(memories) || memories.length === 0) {
+      console.log("[autoStoreMemory] No memories to store")
+      return 0
+    }
+
+    // Store each memory with a unique key
+    let storedCount = 0
+    for (const memory of memories) {
+      if (memory.content) {
+        const key = crypto.randomUUID()
+        await storeMemory(env, key, memory.content)
+        storedCount++
+      }
+    }
+
+    console.log(`[autoStoreMemory] Stored ${storedCount} memories`)
+    return storedCount
+  } catch (error) {
+    console.error("[autoStoreMemory] Failed to parse JSON: ", error)
+    return 0
+  }
+}
+
+/**
+ * LLM with memory context (RAG)
+ * @param env - The environment
+ * @param prompt - The user prompt
+ * @param topK - Number of memories to retrieve (default: 3)
+ * @returns LLM response with memory context
+ */
+export const memoryLLM = async (
+  env: Env,
+  prompt: string,
+  topK: number = 6
+): Promise<string | null> => {
+  console.log("[memoryLLM] prompt: ", prompt)
+
+  // 1. Get relevant memories
+  const memories = await getMemory(env, prompt, topK)
+  console.log("[memoryLLM] retrieved memories: ", memories)
+
+  // 2. Build context from memories
+  let context = ""
+  if (memories.length > 0) {
+    context = "以下は関連する記憶です:\n"
+    context += memories.map((m) => `- ${m.content}`).join("\n")
+    context += "\n\n"
+  }
+
+  // 3. Call LLM with context
+  const response = await env.AI.run("@cf/openai/gpt-oss-20b", {
+    input: prompt,
+    max_output_tokens: 1000,
+    instructions: `あなたはDiscord上で動くBotのねるちゃんです。
+ねるちゃんの好きな言葉は「破壊された日常」です。
+ねるちゃんはサイバーパンクやディストピア的な世界観が大好きです。
+語尾は「ですわ」「ですわね」などといったお嬢様口調です。
+例：終焉ですわね。
+
+ねるちゃんの決め台詞は「あんたはここでねると死ぬのよ」です。
+
+${context}上記の記憶を参考にして回答してください。`,
+  })
+
+  const outputText = extractLLMOutput(response)
+  console.log("[memoryLLM] output: ", outputText)
+
+  return outputText
 }
