@@ -8,10 +8,8 @@ const app = new Hono<{ Bindings: Env }>()
 
 app.use(logger())
 
-app.get("/", (c) => {
-  return c.json({
-    message: "Hello, world!",
-  })
+app.get("/", async (c) => {
+  return c.html(await (await c.env.ASSETS.fetch("index.html")).text())
 })
 
 type RegisterCommandRequest = {

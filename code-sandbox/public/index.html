@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ねるちゃん Bot - 使い方ガイド</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-primary: #0f0f13;
+        --bg-secondary: #1a1a24;
+        --bg-tertiary: #252532;
+        --bg-code: #12121a;
+        --accent-primary: #7c5cff;
+        --accent-secondary: #ff6b9d;
+        --accent-tertiary: #5cffc6;
+        --text-primary: #f0f0f5;
+        --text-secondary: #a0a0b0;
+        --text-muted: #606070;
+        --border-color: #2a2a3a;
+        --gradient-primary: linear-gradient(135deg, #7c5cff 0%, #ff6b9d 100%);
+        --gradient-secondary: linear-gradient(135deg, #5cffc6 0%, #7c5cff 100%);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        font-family: "M PLUS Rounded 1c", sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        line-height: 1.7;
+        min-height: 100vh;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: radial-gradient(
+            ellipse 80% 50% at 20% 10%,
+            rgba(124, 92, 255, 0.08) 0%,
+            transparent 50%
+          ),
+          radial-gradient(
+            ellipse 60% 40% at 80% 90%,
+            rgba(255, 107, 157, 0.06) 0%,
+            transparent 50%
+          );
+        pointer-events: none;
+        z-index: -1;
+      }
+
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 2rem;
+      }
+
+      /* Header */
+      header {
+        text-align: center;
+        padding: 4rem 0 3rem;
+        animation: fadeInDown 0.8s ease-out;
+      }
+
+      @keyframes fadeInDown {
+        from {
+          opacity: 0;
+          transform: translateY(-30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .logo {
+        font-size: 3.5rem;
+        font-weight: 800;
+        background: var(--gradient-primary);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.02em;
+      }
+
+      .tagline {
+        color: var(--text-secondary);
+        font-size: 1.1rem;
+      }
+
+      /* Navigation */
+      nav {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 1rem 1.5rem;
+        margin-bottom: 3rem;
+        position: sticky;
+        top: 1rem;
+        z-index: 100;
+        backdrop-filter: blur(10px);
+        animation: fadeIn 0.8s ease-out 0.2s both;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      nav ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        list-style: none;
+        justify-content: center;
+      }
+
+      nav a {
+        color: var(--text-secondary);
+        text-decoration: none;
+        padding: 0.4rem 0.8rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        transition: all 0.2s ease;
+      }
+
+      nav a:hover {
+        color: var(--text-primary);
+        background: var(--bg-tertiary);
+      }
+
+      /* Sections */
+      section {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        animation: fadeInUp 0.6s ease-out both;
+      }
+
+      section:nth-child(2) {
+        animation-delay: 0.1s;
+      }
+      section:nth-child(3) {
+        animation-delay: 0.15s;
+      }
+      section:nth-child(4) {
+        animation-delay: 0.2s;
+      }
+      section:nth-child(5) {
+        animation-delay: 0.25s;
+      }
+      section:nth-child(6) {
+        animation-delay: 0.3s;
+      }
+
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      h2 {
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      h2::before {
+        content: "";
+        display: inline-block;
+        width: 4px;
+        height: 1.4em;
+        background: var(--gradient-primary);
+        border-radius: 2px;
+      }
+
+      h3 {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--accent-tertiary);
+        margin: 1.5rem 0 0.75rem;
+      }
+
+      p {
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+      }
+
+      /* Command Table */
+      .command-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+      }
+
+      .command-table th,
+      .command-table td {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .command-table th {
+        color: var(--text-muted);
+        font-weight: 400;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .command-table td:first-child {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.9rem;
+        color: var(--accent-primary);
+      }
+
+      .command-table tr:hover {
+        background: var(--bg-tertiary);
+      }
+
+      /* Variable Table */
+      .var-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+      }
+
+      .var-table th,
+      .var-table td {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .var-table th {
+        color: var(--text-muted);
+        font-weight: 400;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .var-table td:first-child {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.9rem;
+        color: var(--accent-tertiary);
+      }
+
+      .var-table tr:hover {
+        background: var(--bg-tertiary);
+      }
+
+      /* Code Blocks */
+      pre {
+        background: var(--bg-code);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        overflow-x: auto;
+        margin: 1rem 0;
+        position: relative;
+      }
+
+      pre::before {
+        content: attr(data-lang);
+        position: absolute;
+        top: 0.5rem;
+        right: 0.75rem;
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      code {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+        line-height: 1.6;
+      }
+
+      /* Inline code */
+      p code,
+      li code,
+      td code {
+        background: var(--bg-tertiary);
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.85em;
+        color: var(--accent-secondary);
+      }
+
+      /* Example blocks */
+      .example {
+        background: var(--bg-tertiary);
+        border-left: 3px solid var(--accent-primary);
+        border-radius: 0 12px 12px 0;
+        padding: 1.25rem;
+        margin: 1rem 0;
+      }
+
+      .example-title {
+        font-size: 0.85rem;
+        color: var(--accent-primary);
+        font-weight: 700;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .example-title::before {
+        content: "💡";
+      }
+
+      /* Notes */
+      .note {
+        background: rgba(124, 92, 255, 0.1);
+        border: 1px solid rgba(124, 92, 255, 0.2);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin: 1.5rem 0;
+      }
+
+      .note-title {
+        font-size: 0.85rem;
+        color: var(--accent-primary);
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+      }
+
+      .note ul {
+        margin: 0;
+        padding-left: 1.25rem;
+      }
+
+      .note li {
+        color: var(--text-secondary);
+        margin: 0.25rem 0;
+      }
+
+      /* Syntax block */
+      .syntax {
+        background: linear-gradient(
+          135deg,
+          rgba(124, 92, 255, 0.1) 0%,
+          rgba(255, 107, 157, 0.05) 100%
+        );
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin: 1rem 0;
+      }
+
+      .syntax-label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.5rem;
+      }
+
+      .syntax code {
+        color: var(--text-primary);
+        font-size: 0.95rem;
+      }
+
+      /* Method list */
+      .method-list {
+        display: grid;
+        gap: 1rem;
+        margin: 1rem 0;
+      }
+
+      .method-item {
+        background: var(--bg-tertiary);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+      }
+
+      .method-number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        background: var(--gradient-primary);
+        border-radius: 50%;
+        font-size: 0.75rem;
+        font-weight: 700;
+        margin-right: 0.5rem;
+      }
+
+      .method-title {
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+      }
+
+      /* Footer */
+      footer {
+        text-align: center;
+        padding: 2rem 0;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+      }
+
+      /* Responsive */
+      @media (max-width: 640px) {
+        .container {
+          padding: 1rem;
+        }
+
+        .logo {
+          font-size: 2.5rem;
+        }
+
+        header {
+          padding: 2rem 0;
+        }
+
+        section {
+          padding: 1.5rem;
+        }
+
+        nav {
+          position: static;
+        }
+
+        nav ul {
+          gap: 0.25rem 0.5rem;
+        }
+
+        .command-table,
+        .var-table {
+          font-size: 0.85rem;
+        }
+
+        .command-table th,
+        .command-table td,
+        .var-table th,
+        .var-table td {
+          padding: 0.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1 class="logo">ねるちゃん Bot</h1>
+        <p class="tagline">Discord上でカスタムコマンドを登録・実行できるBot</p>
+      </header>
+
+      <nav>
+        <ul>
+          <li><a href="#commands">コマンド一覧</a></li>
+          <li><a href="#text-command">テキストコマンド</a></li>
+          <li><a href="#code-command">コードコマンド</a></li>
+          <li><a href="#execution">実行方法</a></li>
+          <li><a href="#variables">利用可能な変数</a></li>
+          <li><a href="#code-format">コードの書き方</a></li>
+        </ul>
+      </nav>
+
+      <main>
+        <section id="commands">
+          <h2>コマンド一覧</h2>
+          <table class="command-table">
+            <thead>
+              <tr>
+                <th>コマンド</th>
+                <th>説明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>!register &lt;名前&gt; &lt;テキスト&gt;</td>
+                <td>テキストコマンドを登録</td>
+              </tr>
+              <tr>
+                <td>!register_code &lt;名前&gt; &lt;コード&gt;</td>
+                <td>コードコマンドを登録</td>
+              </tr>
+              <tr>
+                <td>!&lt;コマンド名&gt; [引数...]</td>
+                <td>登録したコマンドを実行</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="text-command">
+          <h2>テキストコマンドの登録</h2>
+          <p>
+            <code>!register</code>
+            コマンドで、シンプルなテキストコマンドを登録できます。
+          </p>
+
+          <div class="syntax">
+            <div class="syntax-label">構文</div>
+            <code>!register &lt;コマンド名&gt; &lt;テキスト&gt;</code>
+          </div>
+
+          <div class="example">
+            <div class="example-title">例</div>
+            <pre
+              data-lang="discord"
+            ><code>!register hello こんにちは！</code></pre>
+            <p style="margin-bottom: 0">
+              上記を実行すると、<code>hello</code>
+              というコマンドが登録されます。その後、チャットで
+              <code>hello</code>
+              と入力すると、Botが「こんにちは！」と返答します。
+            </p>
+          </div>
+        </section>
+
+        <section id="code-command">
+          <h2>コードコマンドの登録</h2>
+          <p>
+            <code>!register_code</code>
+            コマンドで、Pythonコードを含むコマンドを登録できます。
+          </p>
+
+          <div class="syntax">
+            <div class="syntax-label">構文</div>
+            <code>!register_code &lt;コマンド名&gt; &lt;コード&gt;</code>
+          </div>
+
+          <h3>シンプルな例</h3>
+          <pre
+            data-lang="discord"
+          ><code>!register_code greet print("Hello, World!")</code></pre>
+
+          <h3>バッククォートを使った例</h3>
+          <pre data-lang="discord"><code>!register_code dice
+```python
+import random
+print(random.randint(1, 6))
+```</code></pre>
+
+          <h3>変数を使った例</h3>
+          <pre data-lang="discord"><code>!register_code welcome
+```python
+print(f"ようこそ、{username}さん！")
+```</code></pre>
+        </section>
+
+        <section id="execution">
+          <h2>コマンドの実行</h2>
+
+          <h3>コードコマンドの実行</h3>
+          <p>
+            登録したコードコマンドは
+            <code>!</code> プレフィックスを付けて実行します。
+          </p>
+          <pre data-lang="discord"><code>!dice</code></pre>
+
+          <p>引数を渡すこともできます：</p>
+          <pre data-lang="discord"><code>!mycommand arg1 arg2 arg3</code></pre>
+
+          <h3>テキストコマンドの実行</h3>
+          <p>
+            登録したテキストコマンドは、プレフィックスなしでコマンド名を入力するだけで実行できます。
+          </p>
+          <pre data-lang="discord"><code>hello</code></pre>
+        </section>
+
+        <section id="variables">
+          <h2>利用可能な変数</h2>
+          <p>コードコマンド内では、以下の変数が自動的に利用可能です：</p>
+
+          <table class="var-table">
+            <thead>
+              <tr>
+                <th>変数名</th>
+                <th>説明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>username</td>
+                <td>コマンドを実行したユーザーの表示名</td>
+              </tr>
+              <tr>
+                <td>user_id</td>
+                <td>コマンドを実行したユーザーのDiscord ID</td>
+              </tr>
+              <tr>
+                <td>user_avatar</td>
+                <td>コマンドを実行したユーザーのアバターID</td>
+              </tr>
+              <tr>
+                <td>arg1, arg2, arg3, ...</td>
+                <td>コマンドに渡された引数（1から始まる連番）</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="example">
+            <div class="example-title">変数の使用例</div>
+            <pre data-lang="discord"><code>!register_code profile
+```python
+print(f"ユーザー名: {username}")
+print(f"ユーザーID: {user_id}")
+```</code></pre>
+          </div>
+
+          <div class="example">
+            <div class="example-title">引数を使った例</div>
+            <pre data-lang="discord"><code>!register_code add
+```python
+result = int(arg1) + int(arg2)
+print(f"{arg1} + {arg2} = {result}")
+```</code></pre>
+            <p>実行：</p>
+            <pre data-lang="discord"><code>!add 10 20</code></pre>
+            <p style="margin-bottom: 0">出力： <code>10 + 20 = 30</code></p>
+          </div>
+        </section>
+
+        <section id="code-format">
+          <h2>コードの書き方</h2>
+          <p>コードは以下の形式で記述できます：</p>
+
+          <div class="method-list">
+            <div class="method-item">
+              <div class="method-title">
+                <span class="method-number">1</span>プレーンテキスト
+              </div>
+              <pre
+                data-lang="discord"
+              ><code>!register_code test print("hello")</code></pre>
+            </div>
+
+            <div class="method-item">
+              <div class="method-title">
+                <span class="method-number">2</span>シングルバッククォート
+              </div>
+              <pre
+                data-lang="discord"
+              ><code>!register_code test `print("hello")`</code></pre>
+            </div>
+
+            <div class="method-item">
+              <div class="method-title">
+                <span class="method-number">3</span
+                >トリプルバッククォート（言語指定あり）
+              </div>
+              <pre data-lang="discord"><code>!register_code test
+```python
+print("hello")
+```</code></pre>
+            </div>
+
+            <div class="method-item">
+              <div class="method-title">
+                <span class="method-number">4</span
+                >トリプルバッククォート（言語指定なし）
+              </div>
+              <pre data-lang="discord"><code>!register_code test
+```
+print("hello")
+```</code></pre>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>注意事項</h2>
+          <div class="note">
+            <ul>
+              <li>同じ名前のコマンドを重複して登録することはできません</li>
+              <li>コードコマンドはサンドボックス環境で実行されます</li>
+              <li>実行結果は標準出力（<code>print</code>文）で出力されます</li>
+            </ul>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <p>ねるちゃん Bot &copy; 2025</p>
+      </footer>
+    </div>
+  </body>
+</html>
