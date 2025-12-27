@@ -55,7 +55,8 @@ export class NelchanAgent extends Agent<Env, never> {
     // Workers AIで推論（MCPツール付き）
     const workersAI = createWorkersAI({ binding: this.env.AI })
     const result = streamText({
-      model: workersAI("@cf/meta/llama-4-scout-17b-16e-instruct"),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      model: workersAI("@cf/meta/llama-4-scout-17b-16e-instruct" as any),
       prompt,
       tools,
       stopWhen: hasToolCall("tool_2QhcLAi4_browser_run_code"),
