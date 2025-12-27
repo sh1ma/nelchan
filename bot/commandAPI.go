@@ -64,6 +64,7 @@ type RunCommandRequest struct {
 	CommandName string            `json:"command_name"`
 	IsCode      bool              `json:"is_code"`
 	Vars        map[string]string `json:"vars"`
+	Args        []string          `json:"args"`
 }
 
 func (c *CommandAPIClient) RunCommand(request RunCommandRequest) (*CommandResult, error) {

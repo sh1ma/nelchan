@@ -40,6 +40,7 @@ type RunCommandRequest = {
   command_name: string
   is_code: boolean
   vars: Record<string, string>
+  args: string[]
 }
 
 app.post("/run_command", async (c) => {
@@ -49,7 +50,8 @@ app.post("/run_command", async (c) => {
     c.env,
     request.command_name,
     request.is_code,
-    request.vars
+    request.vars,
+    request.args ?? []
   )
 
   if (!command) {
@@ -77,6 +79,7 @@ app.post("/llm", async (c) => {
 
   const response = await c.env.AI.run("@cf/openai/gpt-oss-20b", {
     input: request.prompt,
+    max_output_tokens: 1000,
   })
 
   console.log("[llm] response: ", response)

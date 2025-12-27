@@ -191,10 +191,17 @@ func (n *Nelchan) handleExecCommand(s *discordgo.Session, m *discordgo.MessageCr
 		return
 	}
 
+	vars := map[string]string{
+		"username":    m.Author.DisplayName(),
+		"user_id":     m.Author.ID,
+		"user_avatar": m.Author.Avatar,
+	}
+
 	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
 		CommandName: commandName,
 		IsCode:      true,
-		Vars:        nil,
+		Vars:        vars,
+		Args:        cmd.Args,
 	})
 	if err != nil {
 		fmt.Println("error running command,", err)
@@ -223,16 +230,14 @@ func (n *Nelchan) handleDynamicCodeCommand(s *discordgo.Session, m *discordgo.Me
 		"user_id":     m.Author.ID,
 		"user_avatar": m.Author.Avatar,
 	}
-	// varsにargsを追加
-	// arg1, arg2, arg3, ...
-	for i, arg := range cmd.Args {
-		vars[fmt.Sprintf("arg%d", i+1)] = arg
-	}
+
+	args := cmd.Args
 
 	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
 		CommandName: cmd.Name,
 		IsCode:      true,
 		Vars:        vars,
+		Args:        args,
 	})
 
 	if err != nil {

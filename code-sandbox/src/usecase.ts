@@ -25,7 +25,8 @@ export const runCommand = async (
   env: Env,
   commandName: string,
   isCode: boolean,
-  envVars: Record<string, string>
+  envVars: Record<string, string>,
+  args: string[]
 ) => {
   // Query based on command type
   const query = isCode
@@ -68,6 +69,7 @@ import requests
 ${Object.entries(envVars)
   .map(([key, value]) => `${key}="${value}"`)
   .join("\n")}
+args = ${JSON.stringify(args)}
 def cs(s: str):
     return f"\`\`\`{s}\`\`\`"
 
