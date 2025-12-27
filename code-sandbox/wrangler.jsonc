@@ -40,12 +40,12 @@
 			],
 			"tag": "v1"
 		},
-		{
-			"tag": "v1",
-			"new_sqlite_classes": [
-				"NelchanAgent"
-			]
-		}
+		// {
+		// 	"tag": "v1",
+		// 	"new_sqlite_classes": [
+		// 		"NelchanAgent"
+		// 	]
+		// }
 	],
 	"d1_databases": [
 		{

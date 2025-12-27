@@ -60,8 +60,7 @@ export const runCommand = async (
   }
 
   if (isCode && result.code) {
-    const randomString = crypto.randomUUID()
-    const sandbox = getSandbox(env.Sandbox, randomString)
+    const sandbox = getSandbox(env.Sandbox, "nelchan-shared")
     const ctx = await sandbox.createCodeContext({
       language: "python",
       timeout: 10000,
@@ -107,9 +106,8 @@ ${result.code}
     } catch (error) {
       console.error("[runCommand] error: ", error)
       throw new Error("Error running code")
-    } finally {
-      exCtx.waitUntil(sandbox.destroy())
     }
+    // destroy()を呼ばないことでコンテナを再利用する
   }
 
   if (!isCode && result.text) {
