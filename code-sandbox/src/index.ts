@@ -1,4 +1,5 @@
 import { routeAgentRequest } from "agents"
+import console from "console"
 import { Hono } from "hono"
 import { logger } from "hono/logger"
 import {
@@ -262,13 +263,24 @@ app.post("/mllm", async (c) => {
 
 type LLMWithAgentRequest = {
   prompt: string
+  path: string
 }
 
 // /llmWithAgent は内部でAgentにプロキシする
-app.post("/llmWithAgent", async (c) => {
-  const agentResponse = await routeAgentRequest(c.req.raw, c.env)
-  if (agentResponse) {
-    return agentResponse
+app.post("/llmWithAgent/:path", async (c) => {
+  const requestBody = await c.req.json<LLMWithAgentRequest>()
+  // URLを書き換えてAgentにルーティング
+  const originalUrl = new URL(c.req.url)
+  originalUrl.pathname = `/agents/nelchan-agent/default/${c.req.param("path")}`
+
+  const request = new Request(originalUrl.toString(), {
+    body: JSON.stringify(requestBody),
+    method: "POST",
+  })
+
+  const response = await routeAgentRequest(request, c.env)
+  if (response) {
+    return response
   }
   return c.json(
     {

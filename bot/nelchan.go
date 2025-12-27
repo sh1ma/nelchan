@@ -3,6 +3,8 @@ package nelchanbot
 import (
 	"fmt"
 	"os"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -214,7 +216,7 @@ func (n *Nelchan) handleExecCommand(s *discordgo.Session, m *discordgo.MessageCr
 		return
 	}
 
-	_, err = s.ChannelMessageSend(m.ChannelID, result.Content)
+	err = n.sendMessage(s, m.ChannelID, result.Content)
 	if err != nil {
 		fmt.Println("error sending message,", err)
 		return
@@ -251,7 +253,7 @@ func (n *Nelchan) handleDynamicCodeCommand(s *discordgo.Session, m *discordgo.Me
 		return
 	}
 
-	_, err = s.ChannelMessageSend(m.ChannelID, result.Content)
+	err = n.sendMessage(s, m.ChannelID, result.Content)
 	if err != nil {
 		fmt.Println("error sending message,", err)
 		return
@@ -299,7 +301,7 @@ func (n *Nelchan) handleShowCommand(s *discordgo.Session, m *discordgo.MessageCr
 		message = fmt.Sprintf("コマンド「%s」のテキスト:\n%s", commandName, result.Content)
 	}
 
-	_, err = s.ChannelMessageSend(m.ChannelID, message)
+	err = n.sendMessage(s, m.ChannelID, message)
 	if err != nil {
 		fmt.Println("error sending message,", err)
 		return
@@ -325,11 +327,35 @@ func (n *Nelchan) handleTextCommand(s *discordgo.Session, m *discordgo.MessageCr
 		return
 	}
 
-	_, err = s.ChannelMessageSend(m.ChannelID, result.Content)
+	err = n.sendMessage(s, m.ChannelID, result.Content)
 	if err != nil {
 		fmt.Println("error sending message,", err)
 		return
 	}
 
 	fmt.Printf("message sent: %s\n", result.Content)
+}
+
+const maxMessageLength = 2000
+
+// sendMessage sends a message to the specified channel.
+// If the content exceeds Discord's 2000 character limit, it sends the content as a text file attachment.
+func (n *Nelchan) sendMessage(s *discordgo.Session, channelID, content string) error {
+	if utf8.RuneCountInString(content) <= maxMessageLength {
+		_, err := s.ChannelMessageSend(channelID, content)
+		return err
+	}
+
+	// Content is too long, send as a file attachment
+	_, err := s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Content: "結果が長すぎるためファイルとして送信します",
+		Files: []*discordgo.File{
+			{
+				Name:        "result.txt",
+				ContentType: "text/plain",
+				Reader:      strings.NewReader(content),
+			},
+		},
+	})
+	return err
 }
