@@ -182,9 +182,10 @@ func (n *Nelchan) handleSmartRegisterCommand(s *discordgo.Session, m *discordgo.
 		return
 	}
 
-	// Format success message with generated code
-	message := fmt.Sprintf("コマンド「%s」を登録しました！\n\n生成されたコード:\n```python\n%s\n```",
+	// Format success message with generated code and usage
+	message := fmt.Sprintf("コマンド「%s」を登録しました！\n\n**使い方:**\n%s\n\n**生成されたコード:**\n```python\n%s\n```",
 		result.CommandName,
+		result.Usage,
 		result.GeneratedCode)
 
 	err = n.sendMessage(s, m.ChannelID, message)

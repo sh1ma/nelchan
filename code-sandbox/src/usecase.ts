@@ -658,27 +658,43 @@ ${context}上記の記憶を参考にして回答してください。`,
  * @param description - Natural language description of the command
  * @returns Generated Python code
  */
+export type GeneratedCommand = {
+  code: string
+  usage: string
+}
+
 export const generateCodeFromDescription = async (
   env: Env,
+  commandName: string,
   description: string
-): Promise<string> => {
+): Promise<GeneratedCommand> => {
+  console.log("[generateCodeFromDescription] commandName: ", commandName)
   console.log("[generateCodeFromDescription] description: ", description)
 
   const systemPrompt = `あなたはPythonコード生成の専門家です。ユーザーの説明に基づいて、Discord Bot用のPythonコードを生成してください。
+
+## コマンドの呼び出し形式
+このコードは「!${commandName}」というDiscordコマンドとして登録されます。
+ユーザーはDiscordで「!${commandName} 引数1 引数2 ...」のように呼び出します。
+引数はスペース区切りで、args変数にリストとして格納されます。
 
 ## 利用可能な変数（グローバルで定義済み）
 - username: str - コマンドを実行したユーザーの表示名
 - user_id: str - コマンドを実行したユーザーのID
 - user_avatar: str - コマンドを実行したユーザーのアバターURL
-- args: list[str] - コマンドの引数リスト（スペース区切り）
+- args: list[str] - コマンドの引数リスト（例: 「!${commandName} foo bar」なら args = ["foo", "bar"]）
 
 ## 利用可能な関数（グローバルで定義済み）
 - llm(prompt: str) -> str: LLMを使ってテキストを生成する
 - mget(query: str, top_k: int = 6) -> list[dict]: メモリから関連する情報を検索する（RAG）
 - mllm(prompt: str, top_k: int = 6) -> str: メモリを参照してLLMで回答を生成する
 - automemory(text: str) -> int: テキストから情報を抽出してメモリに保存する
-- llmWithAgent(prompt: str) -> str: MCPエージェントを使ってLLMで回答を生成する
 - cs(s: str) -> str: 文字列をコードブロック（\`\`\`）で囲む
+
+## 出力形式
+以下の2つを生成してください：
+1. code: Pythonコード（print()で結果を出力）
+2. usage: コマンドの使い方説明（「!${commandName} <引数>」の形式で、引数の説明とどんな結果が返るかを記載）
 
 ## 注意事項
 - 出力はprint()で行ってください
@@ -691,7 +707,10 @@ export const generateCodeFromDescription = async (
     {
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `以下の説明に基づいてPythonコードを生成してください:\n\n${description}` },
+        {
+          role: "user",
+          content: `以下の説明に基づいて「!${commandName}」コマンドのPythonコードを生成してください:\n\n${description}`,
+        },
       ],
       response_format: {
         type: "json_schema",
@@ -704,8 +723,13 @@ export const generateCodeFromDescription = async (
                 type: "string",
                 description: "生成されたPythonコード",
               },
+              usage: {
+                type: "string",
+                description:
+                  "コマンドの使い方説明（引数の説明、どんな結果が返るか）",
+              },
             },
-            required: ["code"],
+            required: ["code", "usage"],
           },
         },
       },
@@ -719,11 +743,17 @@ export const generateCodeFromDescription = async (
     throw new Error("LLMからの応答がありませんでした")
   }
 
-  const { code } = outputText as unknown as { code: string }
+  const { code, usage } = outputText as unknown as {
+    code: string
+    usage: string
+  }
 
   if (!code || code.trim() === "") {
     throw new Error("有効なコードが生成されませんでした")
   }
 
-  return code.trim()
+  return {
+    code: code.trim(),
+    usage: usage?.trim() ?? "",
+  }
 }

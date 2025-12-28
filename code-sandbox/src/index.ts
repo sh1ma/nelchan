@@ -274,15 +274,16 @@ app.post("/smart_register", async (c) => {
   console.log("[smartRegister] request: ", request)
 
   try {
-    const generatedCode = await generateCodeFromDescription(
+    const generated = await generateCodeFromDescription(
       c.env,
+      request.command_name,
       request.description
     )
 
     await registerCommand(
       c.env,
       request.command_name,
-      generatedCode,
+      generated.code,
       true, // isCode
       request.author_id
     )
@@ -290,7 +291,8 @@ app.post("/smart_register", async (c) => {
     return c.json({
       error: null,
       command_name: request.command_name,
-      generated_code: generatedCode,
+      generated_code: generated.code,
+      usage: generated.usage,
     })
   } catch (error) {
     console.error("[smartRegister] error: ", error)
@@ -300,6 +302,7 @@ app.post("/smart_register", async (c) => {
           error instanceof Error ? error.message : "コード生成に失敗しました",
         command_name: null,
         generated_code: null,
+        usage: null,
       },
       500
     )

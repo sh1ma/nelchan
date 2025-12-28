@@ -177,6 +177,7 @@ type SmartRegisterResponse struct {
 	Error         *string `json:"error"`
 	CommandName   string  `json:"command_name"`
 	GeneratedCode string  `json:"generated_code"`
+	Usage         string  `json:"usage"`
 }
 
 // SmartRegisterCommand generates code from description and registers it
