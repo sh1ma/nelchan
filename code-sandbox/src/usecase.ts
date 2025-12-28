@@ -627,6 +627,38 @@ export type GeneratedCommand = {
   usage: string
 }
 
+/**
+ * Get the mention command name
+ * @param env - The environment
+ * @returns The mention command name or null if not set
+ */
+export const getMentionCommand = async (
+  env: Env
+): Promise<string | null> => {
+  const result = await env.nelchan_db
+    .prepare(`SELECT mention_command FROM settings LIMIT 1`)
+    .first<{ mention_command: string | null }>()
+
+  return result?.mention_command ?? null
+}
+
+/**
+ * Set the mention command name
+ * @param env - The environment
+ * @param commandName - The command name to set (null to clear)
+ */
+export const setMentionCommand = async (
+  env: Env,
+  commandName: string | null
+): Promise<void> => {
+  await env.nelchan_db
+    .prepare(`UPDATE settings SET mention_command = ?`)
+    .bind(commandName)
+    .run()
+
+  console.log(`[setMentionCommand] set to: ${commandName}`)
+}
+
 export const generateCodeFromDescription = async (
   env: Env,
   commandName: string,

@@ -77,8 +77,10 @@ func NewNelchan() (*Nelchan, error) {
 		AddCommand("sreg", n.handleSmartRegisterCommand).
 		AddCommand("exec", n.handleExecCommand).
 		AddCommand("show", n.handleShowCommand).
+		AddCommand("set_mention", n.handleSetMentionCommand).
 		SetCodeFallback(n.handleDynamicCodeCommand).
-		SetTextFallback(n.handleTextCommand)
+		SetTextFallback(n.handleTextCommand).
+		SetMentionHandler(n.handleMention)
 
 	return n, nil
 }
@@ -389,6 +391,110 @@ func (n *Nelchan) handleTextCommand(s *discordgo.Session, m *discordgo.MessageCr
 	}
 
 	fmt.Printf("message sent: %s\n", result.Content)
+}
+
+// handleSetMentionCommand handles the !set_mention command
+// Usage: !set_mention <command_name> - Set the mention command
+// Usage: !set_mention - Show current mention command
+// Usage: !set_mention clear - Clear the mention command
+func (n *Nelchan) handleSetMentionCommand(s *discordgo.Session, m *discordgo.MessageCreate, cmd *SlashCommand) {
+	// No args - show current mention command
+	if len(cmd.Args) == 0 {
+		currentCmd, err := n.CommandAPIClient.GetMentionCommand()
+		if err != nil {
+			fmt.Println("error getting mention command:", err)
+			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
+			return
+		}
+
+		if currentCmd == nil || *currentCmd == "" {
+			_, _ = s.ChannelMessageSend(m.ChannelID, "メンションコマンドは設定されていません")
+		} else {
+			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("現在のメンションコマンド: `%s`", *currentCmd))
+		}
+		return
+	}
+
+	commandName := cmd.GetArg(0)
+
+	// Clear command
+	if commandName == "clear" {
+		err := n.CommandAPIClient.SetMentionCommand(nil)
+		if err != nil {
+			fmt.Println("error clearing mention command:", err)
+			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
+			return
+		}
+		_, _ = s.ChannelMessageSend(m.ChannelID, "メンションコマンドをクリアしました")
+		return
+	}
+
+	// Set command
+	err := n.CommandAPIClient.SetMentionCommand(&commandName)
+	if err != nil {
+		fmt.Println("error setting mention command:", err)
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
+		return
+	}
+
+	_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("メンションコマンドを `%s` に設定しました", commandName))
+}
+
+// handleMention handles when the bot is mentioned
+func (n *Nelchan) handleMention(s *discordgo.Session, m *discordgo.MessageCreate, args string) {
+	// Get the current mention command
+	mentionCmd, err := n.CommandAPIClient.GetMentionCommand()
+	if err != nil {
+		fmt.Println("error getting mention command:", err)
+		return
+	}
+
+	// No mention command set
+	if mentionCmd == nil || *mentionCmd == "" {
+		fmt.Println("no mention command set, ignoring mention")
+		return
+	}
+
+	fmt.Printf("executing mention command: %s with args: %s\n", *mentionCmd, args)
+
+	// Show "typing" indicator while processing
+	_ = s.ChannelTyping(m.ChannelID)
+
+	vars := map[string]string{
+		"username":    m.Author.DisplayName(),
+		"user_id":     m.Author.ID,
+		"user_avatar": m.Author.Avatar,
+	}
+
+	// Split args into slice
+	argSlice := strings.Fields(args)
+
+	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
+		CommandName: *mentionCmd,
+		IsCode:      true,
+		Vars:        vars,
+		Args:        argSlice,
+	})
+
+	if err != nil {
+		fmt.Println("error running mention command:", err)
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
+		return
+	}
+
+	if result == nil {
+		fmt.Printf("mention command %s not found\n", *mentionCmd)
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("メンションコマンド `%s` が見つかりません", *mentionCmd))
+		return
+	}
+
+	err = n.sendMessage(s, m.ChannelID, result.Content)
+	if err != nil {
+		fmt.Println("error sending message:", err)
+		return
+	}
+
+	fmt.Printf("mention command executed: %s\n", result.Content)
 }
 
 const maxMessageLength = 2000

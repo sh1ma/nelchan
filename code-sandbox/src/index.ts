@@ -8,9 +8,11 @@ import {
   generateCodeFromDescription,
   getCommand,
   getMemory,
+  getMentionCommand,
   memoryLLM,
   registerCommand,
   runCommand,
+  setMentionCommand,
   storeMemory,
 } from "./usecase"
 
@@ -325,6 +327,53 @@ type LLMWithAgentRequest = {
   prompt: string
   path: string
 }
+
+// Get mention command
+app.get("/mention_command", async (c) => {
+  try {
+    const commandName = await getMentionCommand(c.env)
+    return c.json({
+      error: null,
+      command_name: commandName,
+    })
+  } catch (error) {
+    console.error("[getMentionCommand] error: ", error)
+    return c.json(
+      {
+        error: "Failed to get mention command",
+        command_name: null,
+      },
+      500
+    )
+  }
+})
+
+type SetMentionCommandRequest = {
+  command_name: string | null
+}
+
+// Set mention command
+app.post("/mention_command", async (c) => {
+  const request = await c.req.json<SetMentionCommandRequest>()
+  console.log("[setMentionCommand] request: ", request)
+
+  try {
+    await setMentionCommand(c.env, request.command_name)
+    return c.json({
+      error: null,
+      command_name: request.command_name,
+    })
+  } catch (error) {
+    console.error("[setMentionCommand] error: ", error)
+    return c.json(
+      {
+        error: "Failed to set mention command",
+        command_name: null,
+      },
+      500
+    )
+  }
+})
 
 // /llmWithAgent は内部でAgentにプロキシする
 app.post("/llmWithAgent/:path", async (c) => {

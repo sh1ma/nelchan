@@ -280,3 +280,82 @@ func (c *CommandAPIClient) AutoStoreMemory(text string) error {
 
 	return nil
 }
+
+// MentionCommandResponse represents a response from get/set mention command
+type MentionCommandResponse struct {
+	Error       *string `json:"error"`
+	CommandName *string `json:"command_name"`
+}
+
+// GetMentionCommand gets the current mention command setting
+func (c *CommandAPIClient) GetMentionCommand() (*string, error) {
+	url := c.CodeSandboxURL + "/mention_command"
+
+	response, err := c.doRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	var mentionResponse MentionCommandResponse
+	if err := json.Unmarshal(respBody, &mentionResponse); err != nil {
+		return nil, fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if mentionResponse.Error != nil {
+		return nil, fmt.Errorf("API error: %s", *mentionResponse.Error)
+	}
+
+	return mentionResponse.CommandName, nil
+}
+
+// SetMentionCommandRequest represents a request to set mention command
+type SetMentionCommandRequest struct {
+	CommandName *string `json:"command_name"`
+}
+
+// SetMentionCommand sets the mention command
+func (c *CommandAPIClient) SetMentionCommand(commandName *string) error {
+	url := c.CodeSandboxURL + "/mention_command"
+
+	request := SetMentionCommandRequest{CommandName: commandName}
+	requestBodyJSON, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("error marshalling request body: %w", err)
+	}
+
+	response, err := c.doRequest("POST", url, requestBodyJSON)
+	if err != nil {
+		return fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if response.StatusCode != 200 {
+		return fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	var mentionResponse MentionCommandResponse
+	if err := json.Unmarshal(respBody, &mentionResponse); err != nil {
+		return fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if mentionResponse.Error != nil {
+		return fmt.Errorf("API error: %s", *mentionResponse.Error)
+	}
+
+	return nil
+}

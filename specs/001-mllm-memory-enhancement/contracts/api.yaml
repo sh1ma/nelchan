@@ -1,0 +1,385 @@
+openapi: 3.0.3
+info:
+  title: Nelchan mllm Memory Enhancement API
+  version: 1.0.0
+  description: |
+    mllm Memory Enhancement機能のAPIコントラクト。
+    既存のAPIに追加されるエンドポイントを定義する。
+
+servers:
+  - url: https://my-sandbox.sh1ma.workers.dev
+    description: Production
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: NELCHAN_API_KEY
+
+  schemas:
+    # ===================
+    # Request Schemas
+    # ===================
+
+    StoreMessageRequest:
+      type: object
+      required:
+        - id
+        - channel_id
+        - user_id
+        - content
+        - timestamp
+      properties:
+        id:
+          type: string
+          description: Discord Message ID
+          example: "1234567890123456789"
+        channel_id:
+          type: string
+          description: Discord Channel ID
+          example: "9876543210987654321"
+        user_id:
+          type: string
+          description: Discord User ID
+          example: "1111111111111111111"
+        content:
+          type: string
+          description: メッセージ本文
+          example: "今日はいい天気ですね"
+        timestamp:
+          type: string
+          format: date-time
+          description: メッセージ投稿日時（ISO 8601）
+          example: "2025-12-29T12:00:00Z"
+        edited_timestamp:
+          type: string
+          format: date-time
+          nullable: true
+          description: 編集日時
+        reference_message_id:
+          type: string
+          nullable: true
+          description: 返信先メッセージID
+        mention_user_ids:
+          type: array
+          items:
+            type: string
+          description: メンションされたユーザーID
+        mention_role_ids:
+          type: array
+          items:
+            type: string
+          description: メンションされたロールID
+        has_attachments:
+          type: boolean
+          default: false
+          description: 添付ファイルがあるか
+        username:
+          type: string
+          description: 投稿者のユーザー名
+        display_name:
+          type: string
+          nullable: true
+          description: 投稿者の表示名
+
+    UpdateMessageRequest:
+      type: object
+      required:
+        - id
+        - content
+        - edited_timestamp
+      properties:
+        id:
+          type: string
+          description: Discord Message ID
+        content:
+          type: string
+          description: 更新後のメッセージ本文
+        edited_timestamp:
+          type: string
+          format: date-time
+          description: 編集日時
+
+    DeleteMessageRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Discord Message ID
+
+    EnhancedMllmRequest:
+      type: object
+      required:
+        - prompt
+        - channel_id
+        - user_id
+      properties:
+        prompt:
+          type: string
+          description: ユーザーの入力メッセージ
+          example: "今日の天気はどう？"
+        channel_id:
+          type: string
+          description: 現在のチャンネルID
+        user_id:
+          type: string
+          description: 発話者のUser ID
+        recent_count:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 50
+          description: 取得する直近メッセージ数
+        similar_count:
+          type: integer
+          default: 5
+          minimum: 1
+          maximum: 20
+          description: 取得する類似メッセージ数
+
+    FetchChannelRequest:
+      type: object
+      required:
+        - channel_id
+      properties:
+        channel_id:
+          type: string
+          description: 取得対象のチャンネルID
+        limit:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 500
+          description: 取得するメッセージ数
+
+    # ===================
+    # Response Schemas
+    # ===================
+
+    SuccessResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          nullable: true
+          example: null
+        success:
+          type: boolean
+          example: true
+
+    StoreMessageResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          nullable: true
+        stored:
+          type: boolean
+          description: DBに保存されたか
+        vectorized:
+          type: boolean
+          description: ベクトル化されたか
+
+    EnhancedMllmResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          nullable: true
+        output:
+          type: string
+          nullable: true
+          description: LLMの応答
+        context:
+          type: object
+          properties:
+            recent_count:
+              type: integer
+              description: 使用した直近メッセージ数
+            similar_count:
+              type: integer
+              description: 使用した類似メッセージ数
+            user_found:
+              type: boolean
+              description: ユーザー情報が見つかったか
+
+    FetchChannelResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          nullable: true
+        fetched_count:
+          type: integer
+          description: 取得したメッセージ数
+        stored_count:
+          type: integer
+          description: DBに保存したメッセージ数
+        vectorized_count:
+          type: integer
+          description: ベクトル化したメッセージ数
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid request"
+
+paths:
+  # ===================
+  # Message Management
+  # ===================
+
+  /message:
+    post:
+      summary: メッセージを保存
+      description: |
+        Discordメッセージをデータベースに保存し、
+        条件を満たす場合はベクトル化する。
+      operationId: storeMessage
+      tags:
+        - Messages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreMessageRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreMessageResponse'
+        '400':
+          description: リクエストエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: メッセージを更新
+      description: 編集されたメッセージを更新し、必要に応じて再ベクトル化する。
+      operationId: updateMessage
+      tags:
+        - Messages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMessageRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreMessageResponse'
+        '404':
+          description: メッセージが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: メッセージを削除
+      description: メッセージをDBとベクトルDBから削除する。
+      operationId: deleteMessage
+      tags:
+        - Messages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteMessageRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: メッセージが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ===================
+  # Enhanced mllm
+  # ===================
+
+  /mllm/v2:
+    post:
+      summary: 強化版mllm
+      description: |
+        直近の会話、類似メッセージ、ユーザー情報を
+        コンテキストとして含む高品質な応答を生成する。
+      operationId: enhancedMllm
+      tags:
+        - LLM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnhancedMllmRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnhancedMllmResponse'
+        '500':
+          description: LLMエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ===================
+  # Admin Endpoints
+  # ===================
+
+  /admin/fetch_channel:
+    post:
+      summary: チャンネルのメッセージを一括取得
+      description: |
+        指定したチャンネルの過去メッセージを取得し、
+        DBとベクトルDBに保存する。管理者専用。
+      operationId: fetchChannel
+      tags:
+        - Admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FetchChannelRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchChannelResponse'
+        '403':
+          description: 権限エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'

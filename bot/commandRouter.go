@@ -13,6 +13,9 @@ import (
 // CommandHandler is the function signature for command handlers
 type CommandHandler func(s *discordgo.Session, m *discordgo.MessageCreate, cmd *SlashCommand)
 
+// MentionHandler is the function signature for mention handlers
+type MentionHandler func(s *discordgo.Session, m *discordgo.MessageCreate, args string)
+
 // CommandRouter handles routing of commands to their respective handlers
 type CommandRouter struct {
 	parser              *CommandParser
@@ -20,6 +23,7 @@ type CommandRouter struct {
 	commands            map[string]CommandHandler
 	codeFallbackHandler CommandHandler
 	textFallbackHandler CommandHandler
+	mentionHandler      MentionHandler
 }
 
 // NewCommandRouter creates a new CommandRouter instance
@@ -49,6 +53,12 @@ func (r *CommandRouter) SetTextFallback(handler CommandHandler) *CommandRouter {
 	return r
 }
 
+// SetMentionHandler sets the handler for mention commands
+func (r *CommandRouter) SetMentionHandler(handler MentionHandler) *CommandRouter {
+	r.mentionHandler = handler
+	return r
+}
+
 // Handle processes an incoming message and routes it to the appropriate handler
 func (r *CommandRouter) Handle(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself
@@ -58,6 +68,14 @@ func (r *CommandRouter) Handle(s *discordgo.Session, m *discordgo.MessageCreate)
 
 	fmt.Printf("message received: %s\n", m.Content)
 
+	// Check if message mentions the bot
+	if r.mentionHandler != nil {
+		if args, ok := r.extractMentionArgs(s, m); ok {
+			r.mentionHandler(s, m, args)
+			return
+		}
+	}
+
 	// Check if it's a command with ! prefix
 	if strings.HasPrefix(m.Content, "!") {
 		r.handleCodeCommand(s, m)
@@ -66,6 +84,30 @@ func (r *CommandRouter) Handle(s *discordgo.Session, m *discordgo.MessageCreate)
 
 	// Handle as text command
 	r.handleTextCommand(s, m)
+}
+
+// extractMentionArgs checks if the message mentions the bot and extracts the remaining text
+// Returns the arguments string and true if the bot was mentioned, empty string and false otherwise
+func (r *CommandRouter) extractMentionArgs(s *discordgo.Session, m *discordgo.MessageCreate) (string, bool) {
+	botID := s.State.User.ID
+
+	// Discord mention patterns: <@BOT_ID> or <@!BOT_ID>
+	mentionPatterns := []string{
+		fmt.Sprintf("<@%s>", botID),
+		fmt.Sprintf("<@!%s>", botID),
+	}
+
+	content := m.Content
+	for _, pattern := range mentionPatterns {
+		if strings.Contains(content, pattern) {
+			// Remove the mention and trim whitespace
+			args := strings.TrimSpace(strings.Replace(content, pattern, "", 1))
+			fmt.Printf("mention detected, args: %s\n", args)
+			return args, true
+		}
+	}
+
+	return "", false
 }
 
 // handleCodeCommand handles commands with ! prefix
