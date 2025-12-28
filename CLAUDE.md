@@ -89,3 +89,113 @@ Code commands (`!command args`) execute Python in sandbox with injected variable
 - `DISCORD_BOT_TOKEN` - Discord bot token
 - `NELCHAN_API_KEY` - API key for authenticating requests to code-sandbox
 - `ENV` - `development` (localhost:8787) or `production` (workers.dev URL)
+
+## 開発ワークフロー
+
+### 概要
+
+spec-kit + git-worktree + gh を組み合わせた開発フロー:
+
+```
+仕様策定 → 計画 → タスク生成 → Worktree作成 → 実装 → PR作成
+```
+
+### クイックスタート
+
+```bash
+# 1. 新機能の仕様を作成（mainで）
+/speckit.specify <機能の説明>
+
+# 2. 計画を作成
+/speckit.plan
+
+# 3. タスクを生成
+/speckit.tasks
+
+# 4. Worktreeを作成して並列開発準備
+git worktree add ~/.worktrees/nelchan/<branch-name> <branch-name>
+
+# 5. 別セッションで実装
+claude --cwd ~/.worktrees/nelchan/<branch-name>
+/speckit.implement
+
+# 6. PR作成
+/gh
+```
+
+### ワークフロー詳細
+
+#### Phase 1: 仕様策定（mainリポジトリ）
+
+| コマンド | 説明 | 出力 |
+|---------|------|------|
+| `/speckit.specify <desc>` | 仕様書を作成 | `specs/<branch>/spec.md` |
+| `/speckit.clarify` | 仕様の曖昧な点を明確化 | spec.md 更新 |
+| `/speckit.plan` | 技術計画を作成 | `specs/<branch>/plan.md` |
+| `/speckit.tasks` | 実装タスクを生成 | `specs/<branch>/tasks.md` |
+
+#### Phase 2: 並列開発準備
+
+```bash
+# 作成されたブランチでworktreeを作成
+git worktree add ~/.worktrees/nelchan/<branch> <branch>
+
+# Worktree一覧確認
+git worktree list
+```
+
+#### Phase 3: 実装（Worktreeで）
+
+```bash
+# 新しいClaude Codeセッションを起動
+claude --cwd ~/.worktrees/nelchan/<branch>
+
+# 実装開始
+/speckit.implement
+```
+
+#### Phase 4: PR作成
+
+```bash
+# コミット
+/git
+
+# プッシュ & PR作成
+git push -u origin <branch>
+/gh
+```
+
+#### Phase 5: クリーンアップ（マージ後）
+
+```bash
+# mainに戻る
+git checkout main
+git pull
+
+# Worktree削除
+git worktree remove ~/.worktrees/nelchan/<branch>
+
+# ブランチ削除
+git branch -d <branch>
+```
+
+### Worktreeディレクトリ構成
+
+```
+~/workspace/
+├── nelchan/                    # メインリポジトリ (main)
+│   └── specs/                  # 仕様書はここで管理
+│       ├── 001-feature-a/
+│       └── 002-feature-b/
+└── .worktrees/
+    └── nelchan/                # Worktree格納場所
+        ├── 001-feature-a/      # 機能A実装用
+        └── 002-feature-b/      # 機能B実装用
+```
+
+### 関連スキル
+
+- `/develop` - 現在の状態を確認して次のステップを提案
+- `/git-worktree` - Worktree操作の支援
+- `/git` - Git操作の支援
+- `/gh` - GitHub CLI操作の支援
