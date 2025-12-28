@@ -471,7 +471,6 @@ export const autoStoreMemory = async (
 ## ルール
 
 - 情報はできるだけ多く抽出してください。
-- ユーザと情報を紐づけてください
 
 
 各情報について、内容を表すcontentを生成してください。
@@ -627,12 +626,13 @@ export const generateCodeFromDescription = async (
   console.log("[generateCodeFromDescription] commandName: ", commandName)
   console.log("[generateCodeFromDescription] description: ", description)
 
-  const systemPrompt = `あなたはPythonコード生成の専門家です。ユーザーの説明に基づいて、Discord Bot用のPythonコードを生成してください。
+  const systemPrompt = `あなたはPythonコード生成の専門家です。ユーザーの説明に基づいて、Pythonコードを生成してください。
 
 ## コマンドの呼び出し形式
 このコードは「!${commandName}」というDiscordコマンドとして登録されます。
 ユーザーはDiscordで「!${commandName} 引数1 引数2 ...」のように呼び出します。
 引数はスペース区切りで、args変数にリストとして格納されます。
+コマンドを実行するとPythonコードが実行されます。
 
 ## 利用可能な変数（グローバルで定義済み）
 - username: str - コマンドを実行したユーザーの表示名
@@ -654,7 +654,8 @@ export const generateCodeFromDescription = async (
 
 ## 注意事項
 - 出力はprint()で行ってください
-- 最後の行がprint()で終わるようにしてください
+- 関数定義のみではなく、実行されるようにしてください。
+- Pythonコードを実行したとき、結果がprint()で出力されるようにしてください。
 - import文は必要に応じて追加可能です（requestsは既にインポート済み）
 - コードのみを出力し、説明やマークダウンは含めないでください`
 
