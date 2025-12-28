@@ -97,7 +97,16 @@ func (n *Nelchan) SetIntents(intents discordgo.Intent) {
 
 func (n *Nelchan) Start() error {
 	n.PrintConfig()
+
+	// Register command router handler (handles commands and mentions)
 	n.Discord.AddHandler(n.CommandRouter.Handle)
+
+	// Register message event handlers for mllm memory enhancement
+	n.Discord.AddHandler(n.handleMessageCreate)
+	n.Discord.AddHandler(n.handleMessageUpdate)
+	n.Discord.AddHandler(n.handleMessageDelete)
+
+	// Set intents for guild messages
 	n.SetIntents(discordgo.IntentsGuildMessages)
 
 	err := n.Discord.Open()

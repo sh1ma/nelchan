@@ -659,6 +659,72 @@ export const setMentionCommand = async (
   console.log(`[setMentionCommand] set to: ${commandName}`)
 }
 
+/**
+ * Enhanced Memory LLM (v2) with 3-layer context
+ * @param env - The environment
+ * @param prompt - The user prompt
+ * @param channelId - The channel ID for context
+ * @param userId - The user ID for personalization
+ * @param recentCount - Number of recent messages to include (default: 10)
+ * @param similarCount - Number of similar messages to include (default: 5)
+ * @returns LLM response with enhanced context
+ */
+export const enhancedMemoryLLM = async (
+  env: Env,
+  prompt: string,
+  channelId: string,
+  userId: string,
+  recentCount: number = 10,
+  similarCount: number = 5
+): Promise<{
+  output: string | null
+  context: {
+    recent_count: number
+    similar_count: number
+    user_found: boolean
+  }
+}> => {
+  console.log("[enhancedMemoryLLM] prompt: ", prompt)
+  console.log("[enhancedMemoryLLM] channelId: ", channelId)
+  console.log("[enhancedMemoryLLM] userId: ", userId)
+
+  // Import dynamically to avoid circular dependencies
+  const { buildMLLMContext, buildPromptFromContext, getContextSummary } =
+    await import("./contextBuilder")
+
+  // 1. Build 3-layer context
+  const context = await buildMLLMContext(env, {
+    channelId,
+    userId,
+    prompt,
+    recentCount,
+    similarCount,
+  })
+
+  console.log("[enhancedMemoryLLM] context built: ", {
+    recentMessages: context.recentMessages.length,
+    similarMessages: context.similarMessages.length,
+    userInfo: context.userInfo !== null,
+  })
+
+  // 2. Build prompt with context
+  const fullPrompt = buildPromptFromContext(context, prompt)
+
+  // 3. Call LLM with enhanced context
+  const response = await env.AI.run("@cf/openai/gpt-oss-20b", {
+    input: fullPrompt,
+    max_output_tokens: 1000,
+  })
+
+  const outputText = extractLLMOutput(response)
+  console.log("[enhancedMemoryLLM] output: ", outputText)
+
+  return {
+    output: outputText,
+    context: getContextSummary(context),
+  }
+}
+
 export const generateCodeFromDescription = async (
   env: Env,
   commandName: string,

@@ -2,10 +2,7 @@ package nelchanbot
 
 import (
 	"fmt"
-	"math/rand"
-	"regexp"
 	"strings"
-	"unicode"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -139,8 +136,10 @@ func (r *CommandRouter) handleTextCommand(s *discordgo.Session, m *discordgo.Mes
 		return
 	}
 
-	// Try to remember this message (30% chance)
-	r.tryRememberMessage(m)
+	// Note: Message storage is now handled by the dedicated message handlers
+	// (handleMessageCreate, handleMessageUpdate, handleMessageDelete)
+	// The old tryRememberMessage with 30% probability has been replaced by
+	// deterministic storage with noise filtering
 
 	// Create a SlashCommand-like structure for text commands
 	parts := strings.SplitN(content, " ", 2)
@@ -160,96 +159,13 @@ func (r *CommandRouter) handleTextCommand(s *discordgo.Session, m *discordgo.Mes
 	}
 }
 
-// Memory probability (30%)
-const memoryProbability = 0.30
-
-// URL pattern for detecting URL-only messages
-var urlOnlyPattern = regexp.MustCompile(`^\s*https?://\S+\s*$`)
-
-// tryRememberMessage attempts to store the message in memory with 30% probability
-func (r *CommandRouter) tryRememberMessage(m *discordgo.MessageCreate) {
-	content := strings.TrimSpace(m.Content)
-
-	// Check if message should be remembered
-	if !r.shouldRemember(content) {
-		return
-	}
-
-	// 30% probability check
-	if rand.Float64() > memoryProbability {
-		return
-	}
-
-	// Get username (prefer display name, fallback to username)
-	username := m.Author.GlobalName
-	if username == "" {
-		username = m.Author.Username
-	}
-
-	// Format: ユーザー「username」: message
-	memoryText := fmt.Sprintf("ユーザー「%s」: %s", username, content)
-
-	// Store memory asynchronously (don't block the message handler)
-	go func() {
-		if err := r.apiClient.AutoStoreMemory(memoryText); err != nil {
-			fmt.Printf("error storing memory: %v\n", err)
-		} else {
-			fmt.Printf("memory stored: %s\n", memoryText)
-		}
-	}()
-}
-
-// shouldRemember checks if the message content should be remembered
-func (r *CommandRouter) shouldRemember(content string) bool {
-	// Empty message
-	if content == "" {
-		return false
-	}
-
-	// URL-only message
-	if urlOnlyPattern.MatchString(content) {
-		return false
-	}
-
-	// Emoji-only message
-	if isEmojiOnly(content) {
-		return false
-	}
-
-	return true
-}
-
-// isEmojiOnly checks if the string contains only emojis (including Discord custom emojis)
-func isEmojiOnly(s string) bool {
-	// Discord custom emoji pattern: <:name:id> or <a:name:id>
-	discordEmojiPattern := regexp.MustCompile(`<a?:\w+:\d+>`)
-
-	// Remove Discord custom emojis
-	remaining := discordEmojiPattern.ReplaceAllString(s, "")
-	remaining = strings.TrimSpace(remaining)
-
-	// Check if remaining characters are all emoji or whitespace
-	for _, r := range remaining {
-		if unicode.IsSpace(r) {
-			continue
-		}
-		// Check for Unicode emoji categories
-		if !isEmoji(r) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// isEmoji checks if a rune is an emoji
-func isEmoji(r rune) bool {
-	// Common emoji ranges
-	return unicode.Is(unicode.So, r) || // Symbol, Other (includes many emojis)
-		unicode.Is(unicode.Sk, r) || // Symbol, Modifier
-		(r >= 0x1F300 && r <= 0x1F9FF) || // Miscellaneous Symbols and Pictographs, Emoticons, etc.
-		(r >= 0x2600 && r <= 0x26FF) || // Miscellaneous Symbols
-		(r >= 0x2700 && r <= 0x27BF) || // Dingbats
-		(r >= 0xFE00 && r <= 0xFE0F) || // Variation Selectors
-		(r >= 0x1F000 && r <= 0x1FFFF) // All emoji blocks
-}
+// Note: The following legacy memory functions have been removed:
+// - tryRememberMessage (30% probability storage)
+// - shouldRemember
+// - isEmojiOnly
+// - isEmoji
+// - memoryProbability constant
+// - urlOnlyPattern regex
+//
+// Message storage is now handled by the dedicated message handlers in
+// messageHandlers.go with deterministic storage and noise filtering.

@@ -5,6 +5,7 @@ import { bearerAuth } from "hono/bearer-auth"
 import { logger } from "hono/logger"
 import {
   autoStoreMemory,
+  enhancedMemoryLLM,
   generateCodeFromDescription,
   getCommand,
   getMemory,
@@ -15,6 +16,20 @@ import {
   setMentionCommand,
   storeMemory,
 } from "./usecase"
+import {
+  storeMessage,
+  storeMessages,
+  updateMessage,
+  deleteMessage,
+} from "./messageService"
+import type {
+  StoreMessageRequest,
+  UpdateMessageRequest,
+  DeleteMessageRequest,
+  EnhancedMllmRequest,
+  FetchChannelRequest,
+} from "./types/discord"
+import { fetchChannelMessages } from "./discordClient"
 
 export { Sandbox } from "@cloudflare/sandbox"
 export { NelchanAgent } from "./agent"
@@ -328,6 +343,173 @@ type LLMWithAgentRequest = {
   path: string
 }
 
+// ==================
+// Message Endpoints
+// ==================
+
+// POST /message - Store a Discord message
+app.post("/message", async (c) => {
+  const request = await c.req.json<StoreMessageRequest>()
+  console.log("[message] POST request: ", request.id)
+
+  try {
+    const result = await storeMessage(c.env, request)
+    return c.json(result)
+  } catch (error) {
+    console.error("[message] POST error: ", error)
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to store message",
+        stored: false,
+        vectorized: false,
+      },
+      500
+    )
+  }
+})
+
+// PUT /message - Update a Discord message
+app.put("/message", async (c) => {
+  const request = await c.req.json<UpdateMessageRequest>()
+  console.log("[message] PUT request: ", request.id)
+
+  try {
+    const result = await updateMessage(
+      c.env,
+      request.id,
+      request.content,
+      request.edited_timestamp
+    )
+
+    if (result.error === "Message not found") {
+      return c.json(result, 404)
+    }
+
+    return c.json(result)
+  } catch (error) {
+    console.error("[message] PUT error: ", error)
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to update message",
+        stored: false,
+        vectorized: false,
+      },
+      500
+    )
+  }
+})
+
+// DELETE /message - Delete a Discord message
+app.delete("/message", async (c) => {
+  const request = await c.req.json<DeleteMessageRequest>()
+  console.log("[message] DELETE request: ", request.id)
+
+  try {
+    const result = await deleteMessage(c.env, request.id)
+
+    if (result.error === "Message not found") {
+      return c.json(result, 404)
+    }
+
+    return c.json(result)
+  } catch (error) {
+    console.error("[message] DELETE error: ", error)
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to delete message",
+        success: false,
+      },
+      500
+    )
+  }
+})
+
+// ==================
+// Enhanced mllm Endpoint
+// ==================
+
+// POST /mllm/v2 - Enhanced mllm with 3-layer context
+app.post("/mllm/v2", async (c) => {
+  const request = await c.req.json<EnhancedMllmRequest>()
+  console.log("[mllm/v2] request: ", request)
+
+  try {
+    const result = await enhancedMemoryLLM(
+      c.env,
+      request.prompt,
+      request.channel_id,
+      request.user_id,
+      request.recent_count,
+      request.similar_count
+    )
+
+    return c.json({
+      error: null,
+      output: result.output,
+      context: result.context,
+    })
+  } catch (error) {
+    console.error("[mllm/v2] error: ", error)
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to generate response",
+        output: null,
+        context: null,
+      },
+      500
+    )
+  }
+})
+
+// ==================
+// Admin Endpoints
+// ==================
+
+// POST /admin/fetch_channel - Fetch channel messages and store them
+app.post("/admin/fetch_channel", async (c) => {
+  const request = await c.req.json<FetchChannelRequest>()
+  console.log("[admin/fetch_channel] request: ", request)
+
+  try {
+    // Discord APIからメッセージを取得
+    const messages = await fetchChannelMessages(
+      c.env,
+      request.channel_id,
+      request.limit ?? 100
+    )
+
+    // メッセージを保存
+    const result = await storeMessages(c.env, messages)
+
+    return c.json({
+      error: null,
+      fetched_count: messages.length,
+      stored_count: result.stored_count,
+      vectorized_count: result.vectorized_count,
+    })
+  } catch (error) {
+    console.error("[admin/fetch_channel] error: ", error)
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch channel messages",
+        fetched_count: 0,
+        stored_count: 0,
+        vectorized_count: 0,
+      },
+      500
+    )
+  }
+})
+
 // Get mention command
 app.get("/mention_command", async (c) => {
   try {
@@ -400,6 +582,9 @@ app.post("/llmWithAgent/:path", async (c) => {
   )
 })
 
+import { handleScheduled } from "./scheduler"
+
 export default {
   fetch: app.fetch,
+  scheduled: handleScheduled,
 } satisfies ExportedHandler<Env>
