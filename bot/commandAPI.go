@@ -165,6 +165,56 @@ func (c *CommandAPIClient) GetCommand(request GetCommandRequest) (*GetCommandInf
 	return getCommandResponse.Command, nil
 }
 
+// SmartRegisterRequest represents a request to smart register a command
+type SmartRegisterRequest struct {
+	CommandName string `json:"command_name"`
+	Description string `json:"description"`
+	AuthorID    string `json:"author_id"`
+}
+
+// SmartRegisterResponse represents a response from smart register
+type SmartRegisterResponse struct {
+	Error         *string `json:"error"`
+	CommandName   string  `json:"command_name"`
+	GeneratedCode string  `json:"generated_code"`
+}
+
+// SmartRegisterCommand generates code from description and registers it
+func (c *CommandAPIClient) SmartRegisterCommand(request SmartRegisterRequest) (*SmartRegisterResponse, error) {
+	url := c.CodeSandboxURL + "/smart_register"
+
+	requestBodyJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling request body: %w", err)
+	}
+
+	response, err := http.Post(url, "application/json", bytes.NewBuffer(requestBodyJSON))
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	var smartRegisterResponse SmartRegisterResponse
+	if err := json.Unmarshal(respBody, &smartRegisterResponse); err != nil {
+		return nil, fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if smartRegisterResponse.Error != nil {
+		return nil, fmt.Errorf("API error: %s", *smartRegisterResponse.Error)
+	}
+
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	return &smartRegisterResponse, nil
+}
+
 // AutoMemoryRequest represents a request to auto-store memory
 type AutoMemoryRequest struct {
 	Text string `json:"text"`

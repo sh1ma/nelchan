@@ -4,12 +4,14 @@ import { Hono } from "hono"
 import { logger } from "hono/logger"
 import {
   autoStoreMemory,
+  generateCodeFromDescription,
   getCommand,
   getMemory,
   memoryLLM,
   registerCommand,
   runCommand,
   storeMemory,
+  warmupSandboxes,
 } from "./usecase"
 
 export { Sandbox } from "@cloudflare/sandbox"
@@ -261,6 +263,49 @@ app.post("/mllm", async (c) => {
   }
 })
 
+type SmartRegisterRequest = {
+  command_name: string
+  description: string
+  author_id: string
+}
+
+app.post("/smart_register", async (c) => {
+  const request = await c.req.json<SmartRegisterRequest>()
+  console.log("[smartRegister] request: ", request)
+
+  try {
+    const generatedCode = await generateCodeFromDescription(
+      c.env,
+      request.description
+    )
+
+    await registerCommand(
+      c.env,
+      request.command_name,
+      generatedCode,
+      true, // isCode
+      request.author_id
+    )
+
+    return c.json({
+      error: null,
+      command_name: request.command_name,
+      generated_code: generatedCode,
+    })
+  } catch (error) {
+    console.error("[smartRegister] error: ", error)
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "コード生成に失敗しました",
+        command_name: null,
+        generated_code: null,
+      },
+      500
+    )
+  }
+})
+
 type LLMWithAgentRequest = {
   prompt: string
   path: string
@@ -293,4 +338,12 @@ app.post("/llmWithAgent/:path", async (c) => {
 
 export default {
   fetch: app.fetch,
+  scheduled: async (
+    _controller: ScheduledController,
+    env: Env,
+    _ctx: ExecutionContext
+  ) => {
+    console.log("[scheduled] Cron triggered, warming up sandboxes...")
+    await warmupSandboxes(env)
+  },
 } satisfies ExportedHandler<Env>

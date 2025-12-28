@@ -1,5 +1,45 @@
 import { getSandbox } from "@cloudflare/sandbox"
 
+// Sandboxプールサイズ（ロードバランシング用）
+const SANDBOX_POOL_SIZE = 3
+
+const getRandomSandboxId = () => {
+  const index = Math.floor(Math.random() * SANDBOX_POOL_SIZE)
+  return `nelchan-pool-${index}`
+}
+
+/**
+ * Warm up all sandbox containers to reduce cold start latency
+ * Called by scheduled handler every 5 minutes
+ */
+export const warmupSandboxes = async (env: Env) => {
+  console.log("[warmup] Starting sandbox warmup...")
+  const warmupPromises = []
+
+  for (let i = 0; i < SANDBOX_POOL_SIZE; i++) {
+    const sandboxId = `nelchan-pool-${i}`
+    const sandbox = getSandbox(env.Sandbox, sandboxId)
+
+    warmupPromises.push(
+      (async () => {
+        try {
+          const ctx = await sandbox.createCodeContext({
+            language: "python",
+            timeout: 5000,
+          })
+          await sandbox.runCode("print('warm')", { context: ctx })
+          console.log(`[warmup] ${sandboxId} warmed up successfully`)
+        } catch (err) {
+          console.error(`[warmup] ${sandboxId} failed:`, err)
+        }
+      })()
+    )
+  }
+
+  await Promise.all(warmupPromises)
+  console.log("[warmup] All sandboxes warmup completed")
+}
+
 type NelchanGetCommandResult = {
   id: string
   name: string
@@ -60,7 +100,9 @@ export const runCommand = async (
   }
 
   if (isCode && result.code) {
-    const sandbox = getSandbox(env.Sandbox, "nelchan-shared")
+    const sandboxId = getRandomSandboxId()
+    console.log(`[runCommand] using sandbox: ${sandboxId}`)
+    const sandbox = getSandbox(env.Sandbox, sandboxId)
     const ctx = await sandbox.createCodeContext({
       language: "python",
       timeout: 10000,
@@ -608,4 +650,80 @@ ${context}上記の記憶を参考にして回答してください。`,
   console.log("[memoryLLM] output: ", outputText)
 
   return outputText
+}
+
+/**
+ * Generate Python code from natural language description using LLM
+ * @param env - The environment
+ * @param description - Natural language description of the command
+ * @returns Generated Python code
+ */
+export const generateCodeFromDescription = async (
+  env: Env,
+  description: string
+): Promise<string> => {
+  console.log("[generateCodeFromDescription] description: ", description)
+
+  const systemPrompt = `あなたはPythonコード生成の専門家です。ユーザーの説明に基づいて、Discord Bot用のPythonコードを生成してください。
+
+## 利用可能な変数（グローバルで定義済み）
+- username: str - コマンドを実行したユーザーの表示名
+- user_id: str - コマンドを実行したユーザーのID
+- user_avatar: str - コマンドを実行したユーザーのアバターURL
+- args: list[str] - コマンドの引数リスト（スペース区切り）
+
+## 利用可能な関数（グローバルで定義済み）
+- llm(prompt: str) -> str: LLMを使ってテキストを生成する
+- mget(query: str, top_k: int = 6) -> list[dict]: メモリから関連する情報を検索する（RAG）
+- mllm(prompt: str, top_k: int = 6) -> str: メモリを参照してLLMで回答を生成する
+- automemory(text: str) -> int: テキストから情報を抽出してメモリに保存する
+- llmWithAgent(prompt: str) -> str: MCPエージェントを使ってLLMで回答を生成する
+- cs(s: str) -> str: 文字列をコードブロック（\`\`\`）で囲む
+
+## 注意事項
+- 出力はprint()で行ってください
+- 最後の行がprint()で終わるようにしてください
+- import文は必要に応じて追加可能です（requestsは既にインポート済み）
+- コードのみを出力し、説明やマークダウンは含めないでください`
+
+  const response = await env.AI.run(
+    "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+    {
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `以下の説明に基づいてPythonコードを生成してください:\n\n${description}` },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "python_code",
+          schema: {
+            type: "object",
+            properties: {
+              code: {
+                type: "string",
+                description: "生成されたPythonコード",
+              },
+            },
+            required: ["code"],
+          },
+        },
+      },
+    }
+  )
+
+  const outputText = response.response ?? null
+  console.log("[generateCodeFromDescription] LLM output: ", outputText)
+
+  if (!outputText) {
+    throw new Error("LLMからの応答がありませんでした")
+  }
+
+  const { code } = outputText as unknown as { code: string }
+
+  if (!code || code.trim() === "") {
+    throw new Error("有効なコードが生成されませんでした")
+  }
+
+  return code.trim()
 }

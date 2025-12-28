@@ -68,6 +68,8 @@ func NewNelchan() (*Nelchan, error) {
 		AddCommand("reg", n.handleRegisterCommand).
 		AddCommand("register_code", n.handleRegisterCodeCommand).
 		AddCommand("regc", n.handleRegisterCodeCommand).
+		AddCommand("smart_register", n.handleSmartRegisterCommand).
+		AddCommand("sreg", n.handleSmartRegisterCommand).
 		AddCommand("exec", n.handleExecCommand).
 		AddCommand("show", n.handleShowCommand).
 		SetCodeFallback(n.handleDynamicCodeCommand).
@@ -143,6 +145,53 @@ func (n *Nelchan) handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.M
 	}
 
 	_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("コードコマンド「%s」を登録しました！", commandName))
+}
+
+// handleSmartRegisterCommand handles the !sreg command
+// Usage: !sreg <command_name> <description>
+// Generates Python code from natural language description and registers it
+func (n *Nelchan) handleSmartRegisterCommand(s *discordgo.Session, m *discordgo.MessageCreate, _ *SlashCommand) {
+	// Re-parse with body support for description
+	cmd := n.CommandParser.ParseSlashCommandWithBody(m.Content, 2)
+	if cmd == nil || len(cmd.Args) < 2 {
+		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !sreg <コマンド名> <説明>")
+		return
+	}
+
+	commandName := cmd.GetArg(0)
+	description := cmd.GetArg(1)
+
+	if commandName == "" || description == "" {
+		_, _ = s.ChannelMessageSend(m.ChannelID, "使い方: !sreg <コマンド名> <説明>")
+		return
+	}
+
+	fmt.Printf("sreg command: name=%s, description=%s\n", commandName, description)
+
+	// Show "typing" indicator while processing
+	_ = s.ChannelTyping(m.ChannelID)
+
+	result, err := n.CommandAPIClient.SmartRegisterCommand(SmartRegisterRequest{
+		CommandName: commandName,
+		Description: description,
+		AuthorID:    m.Author.ID,
+	})
+	if err != nil {
+		fmt.Println("error smart registering command,", err)
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("エラー: %s", err.Error()))
+		return
+	}
+
+	// Format success message with generated code
+	message := fmt.Sprintf("コマンド「%s」を登録しました！\n\n生成されたコード:\n```python\n%s\n```",
+		result.CommandName,
+		result.GeneratedCode)
+
+	err = n.sendMessage(s, m.ChannelID, message)
+	if err != nil {
+		fmt.Println("error sending message,", err)
+		return
+	}
 }
 
 // handleRegisterCommand handles the !register command
