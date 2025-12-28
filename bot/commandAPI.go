@@ -10,12 +10,29 @@ import (
 
 type CommandAPIClient struct {
 	CodeSandboxURL string
+	APIKey         string
+	httpClient     *http.Client
 }
 
-func NewCommandAPIClient(codeSandboxURL string) *CommandAPIClient {
+func NewCommandAPIClient(codeSandboxURL, apiKey string) *CommandAPIClient {
 	return &CommandAPIClient{
 		CodeSandboxURL: codeSandboxURL,
+		APIKey:         apiKey,
+		httpClient:     &http.Client{},
 	}
+}
+
+// doRequest はAuthorizationヘッダー付きでHTTPリクエストを実行する
+func (c *CommandAPIClient) doRequest(method, url string, body []byte) (*http.Response, error) {
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+
+	return c.httpClient.Do(req)
 }
 
 type RegisterCommandRequest struct {
@@ -33,7 +50,7 @@ func (c *CommandAPIClient) RegisterCommand(request RegisterCommandRequest) error
 		return fmt.Errorf("error marshalling request body: %w", err)
 	}
 
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(requestBodyJSON))
+	response, err := c.doRequest("POST", url, requestBodyJSON)
 	if err != nil {
 		return fmt.Errorf("error sending request: %w", err)
 	}
@@ -75,7 +92,7 @@ func (c *CommandAPIClient) RunCommand(request RunCommandRequest) (*CommandResult
 		return nil, fmt.Errorf("error marshalling request body: %w", err)
 	}
 
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(requestBodyJSON))
+	response, err := c.doRequest("POST", url, requestBodyJSON)
 	if err != nil {
 		return nil, fmt.Errorf("error sending request: %w", err)
 	}
@@ -137,7 +154,7 @@ func (c *CommandAPIClient) GetCommand(request GetCommandRequest) (*GetCommandInf
 		return nil, fmt.Errorf("error marshalling request body: %w", err)
 	}
 
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(requestBodyJSON))
+	response, err := c.doRequest("POST", url, requestBodyJSON)
 	if err != nil {
 		return nil, fmt.Errorf("error sending request: %w", err)
 	}
@@ -189,7 +206,7 @@ func (c *CommandAPIClient) SmartRegisterCommand(request SmartRegisterRequest) (*
 		return nil, fmt.Errorf("error marshalling request body: %w", err)
 	}
 
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(requestBodyJSON))
+	response, err := c.doRequest("POST", url, requestBodyJSON)
 	if err != nil {
 		return nil, fmt.Errorf("error sending request: %w", err)
 	}
@@ -237,7 +254,7 @@ func (c *CommandAPIClient) AutoStoreMemory(text string) error {
 		return fmt.Errorf("error marshalling request body: %w", err)
 	}
 
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(requestBodyJSON))
+	response, err := c.doRequest("POST", url, requestBodyJSON)
 	if err != nil {
 		return fmt.Errorf("error sending request: %w", err)
 	}

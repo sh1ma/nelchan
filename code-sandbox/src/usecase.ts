@@ -64,29 +64,31 @@ export const runCommand = async (
     console.log(`[runCommand] using sandbox: ${sandboxId}`)
     const sandbox = getSandbox(env.Sandbox, sandboxId)
     try {
+      const apiKey = env.NELCHAN_API_KEY
       const envEmbededCode = `
 import requests
 ${Object.entries(envVars)
   .map(([key, value]) => `${key}="${value}"`)
   .join("\n")}
 args = ${JSON.stringify(args)}
+
 def cs(s: str):
     return f"\`\`\`{s}\`\`\`"
 
 def llm(prompt: str):
-  return requests.post("https://my-sandbox.sh1ma.workers.dev/llm", json={"prompt": prompt}).json()["output"]
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/llm", json={"prompt": prompt}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
 
 def mget(query: str, top_k: int = 6):
-  return requests.post("https://my-sandbox.sh1ma.workers.dev/mget", json={"query": query, "topK": top_k}).json()["results"]
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/mget", json={"query": query, "topK": top_k}, headers={"Authorization": "Bearer ${apiKey}"}).json()["results"]
 
 def automemory(text: str):
-  return requests.post("https://my-sandbox.sh1ma.workers.dev/automemory", json={"text": text}).json()["count"]
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/automemory", json={"text": text}, headers={"Authorization": "Bearer ${apiKey}"}).json()["count"]
 
 def mllm(prompt: str, top_k: int = 6):
-  return requests.post("https://my-sandbox.sh1ma.workers.dev/mllm", json={"prompt": prompt, "topK": top_k}).json()["output"]
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/mllm", json={"prompt": prompt, "topK": top_k}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
 
 def llmWithAgent(prompt: str):
-  return requests.post("https://my-sandbox.sh1ma.workers.dev/llmWithAgent", json={"prompt": prompt}).json()["output"]
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/llmWithAgent", json={"prompt": prompt}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
 
 ${result.code}
 `

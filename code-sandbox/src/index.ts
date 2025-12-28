@@ -1,6 +1,7 @@
 import { routeAgentRequest } from "agents"
 import console from "console"
 import { Hono } from "hono"
+import { bearerAuth } from "hono/bearer-auth"
 import { logger } from "hono/logger"
 import {
   autoStoreMemory,
@@ -19,6 +20,18 @@ export { NelchanAgent } from "./agent"
 const app = new Hono<{ Bindings: Env }>()
 
 app.use(logger())
+
+// API認証ミドルウェア（静的アセット以外のすべてのエンドポイントに適用）
+app.use("/*", async (c, next) => {
+  // 静的アセット（/）はスキップ
+  if (c.req.path === "/" && c.req.method === "GET") {
+    return next()
+  }
+
+  // Bearer token認証
+  const authMiddleware = bearerAuth({ token: c.env.NELCHAN_API_KEY })
+  return authMiddleware(c, next)
+})
 
 app.get("/", async (c) => {
   return c.html(await (await c.env.ASSETS.fetch("index.html")).text())

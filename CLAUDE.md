@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 このリポジトリでは日本語でやりとりを行うこと。
 
+## 作業ルール
+
+- `cd dir && command` のようにcdとコマンドを&&で繋げて実行してはいけない。代わりに絶対パスを使用するか、作業ディレクトリを指定する
+- ビルドや型チェック（`go build`, `go test`, `pnpm run typecheck` など）はユーザーに任せる
+
 ## Project Overview
 
 nelchan is a Discord bot with two main components:
@@ -82,4 +87,5 @@ Code commands (`!command args`) execute Python in sandbox with injected variable
 ## Environment
 
 - `DISCORD_BOT_TOKEN` - Discord bot token
+- `NELCHAN_API_KEY` - API key for authenticating requests to code-sandbox
 - `ENV` - `development` (localhost:8787) or `production` (workers.dev URL)

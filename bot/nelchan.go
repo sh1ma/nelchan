@@ -28,6 +28,11 @@ func NewNelchan() (*Nelchan, error) {
 		return nil, fmt.Errorf("DISCORD_BOT_TOKEN is not set")
 	}
 
+	nelchanAPIKey := os.Getenv("NELCHAN_API_KEY")
+	if nelchanAPIKey == "" {
+		return nil, fmt.Errorf("NELCHAN_API_KEY is not set")
+	}
+
 	env := os.Getenv("ENV")
 	if env == "" {
 		env = "development"
@@ -50,7 +55,7 @@ func NewNelchan() (*Nelchan, error) {
 		CodeSandboxURL: codeSandboxURL,
 	}
 
-	commandAPIClient := NewCommandAPIClient(codeSandboxURL)
+	commandAPIClient := NewCommandAPIClient(codeSandboxURL, nelchanAPIKey)
 	commandParser := NewCommandParser()
 	commandRouter := NewCommandRouter(commandParser, commandAPIClient)
 
