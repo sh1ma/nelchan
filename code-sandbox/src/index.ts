@@ -11,7 +11,6 @@ import {
   registerCommand,
   runCommand,
   storeMemory,
-  warmupSandboxes,
 } from "./usecase"
 
 export { Sandbox } from "@cloudflare/sandbox"

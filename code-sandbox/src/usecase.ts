@@ -1,45 +1,5 @@
 import { getSandbox } from "@cloudflare/sandbox"
 
-// Sandboxプールサイズ（ロードバランシング用）
-const SANDBOX_POOL_SIZE = 1
-
-const getRandomSandboxId = () => {
-  const index = Math.floor(Math.random() * SANDBOX_POOL_SIZE)
-  return `nelchan-pool-${index}`
-}
-
-/**
- * Warm up all sandbox containers to reduce cold start latency
- * Called by scheduled handler every 5 minutes
- */
-export const warmupSandboxes = async (env: Env) => {
-  console.log("[warmup] Starting sandbox warmup...")
-  const warmupPromises = []
-
-  for (let i = 0; i < SANDBOX_POOL_SIZE; i++) {
-    const sandboxId = `nelchan-pool-${i}`
-    const sandbox = getSandbox(env.Sandbox, sandboxId)
-
-    warmupPromises.push(
-      (async () => {
-        try {
-          const ctx = await sandbox.createCodeContext({
-            language: "python",
-            timeout: 5000,
-          })
-          await sandbox.runCode("print('warm')", { context: ctx })
-          console.log(`[warmup] ${sandboxId} warmed up successfully`)
-        } catch (err) {
-          console.error(`[warmup] ${sandboxId} failed:`, err)
-        }
-      })()
-    )
-  }
-
-  await Promise.all(warmupPromises)
-  console.log("[warmup] All sandboxes warmup completed")
-}
-
 type NelchanGetCommandResult = {
   id: string
   name: string
@@ -100,13 +60,9 @@ export const runCommand = async (
   }
 
   if (isCode && result.code) {
-    const sandboxId = getRandomSandboxId()
+    const sandboxId = "nelchan-sandbox"
     console.log(`[runCommand] using sandbox: ${sandboxId}`)
     const sandbox = getSandbox(env.Sandbox, sandboxId)
-    const ctx = await sandbox.createCodeContext({
-      language: "python",
-      timeout: 10000,
-    })
     try {
       const envEmbededCode = `
 import requests
@@ -135,9 +91,7 @@ def llmWithAgent(prompt: str):
 ${result.code}
 `
       console.log(envEmbededCode)
-      const executionResult = await sandbox.runCode(envEmbededCode, {
-        context: ctx,
-      })
+      const executionResult = await sandbox.runCode(envEmbededCode)
       console.log("[runCommand] executionResult: ", executionResult)
       const codeResultOutput = executionResult.logs.stdout.join("\n")
       return {
