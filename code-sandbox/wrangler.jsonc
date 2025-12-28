@@ -13,9 +13,6 @@
 	"observability": {
 		"enabled": true
 	},
-	"triggers": {
-		"crons": ["*/5 * * * *"]
-	},
 	"containers": [
 		{
 			"class_name": "Sandbox",

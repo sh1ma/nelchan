@@ -341,12 +341,4 @@ app.post("/llmWithAgent/:path", async (c) => {
 
 export default {
   fetch: app.fetch,
-  scheduled: async (
-    _controller: ScheduledController,
-    env: Env,
-    _ctx: ExecutionContext
-  ) => {
-    console.log("[scheduled] Cron triggered, warming up sandboxes...")
-    await warmupSandboxes(env)
-  },
 } satisfies ExportedHandler<Env>

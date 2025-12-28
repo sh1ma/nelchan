@@ -1,7 +1,7 @@
 import { getSandbox } from "@cloudflare/sandbox"
 
 // Sandboxプールサイズ（ロードバランシング用）
-const SANDBOX_POOL_SIZE = 3
+const SANDBOX_POOL_SIZE = 1
 
 const getRandomSandboxId = () => {
   const index = Math.floor(Math.random() * SANDBOX_POOL_SIZE)
