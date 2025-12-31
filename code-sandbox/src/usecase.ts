@@ -87,8 +87,11 @@ def automemory(text: str):
 def mllm(prompt: str, top_k: int = 6):
   return requests.post("https://my-sandbox.sh1ma.workers.dev/mllm", json={"prompt": prompt, "topK": top_k}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
 
-def llmWithAgent(prompt: str):
-  return requests.post("https://my-sandbox.sh1ma.workers.dev/llmWithAgent", json={"prompt": prompt}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
+def mllm2(prompt: str):
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/mllm/v2", json={"prompt": prompt, "channel_id": channel_id, "user_id": user_id}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
+
+# def llmWithAgent(prompt: str):
+#  return requests.post("https://my-sandbox.sh1ma.workers.dev/llmWithAgent", json={"prompt": prompt}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
 
 ${result.code}
 `
@@ -625,6 +628,122 @@ ${context}上記の記憶を参考にして回答してください。`,
 export type GeneratedCommand = {
   code: string
   usage: string
+}
+
+/**
+ * Get the mention command name
+ * @param env - The environment
+ * @returns The mention command name or null if not set
+ */
+export const getMentionCommand = async (env: Env): Promise<string | null> => {
+  const result = await env.nelchan_db
+    .prepare(`SELECT mention_command FROM settings LIMIT 1`)
+    .first<{ mention_command: string | null }>()
+
+  return result?.mention_command ?? null
+}
+
+/**
+ * Set the mention command name
+ * @param env - The environment
+ * @param commandName - The command name to set (null to clear)
+ */
+export const setMentionCommand = async (
+  env: Env,
+  commandName: string | null
+): Promise<void> => {
+  await env.nelchan_db
+    .prepare(`UPDATE settings SET mention_command = ?`)
+    .bind(commandName)
+    .run()
+
+  console.log(`[setMentionCommand] set to: ${commandName}`)
+}
+
+/**
+ * Enhanced Memory LLM (v2) with 3-layer context
+ * @param env - The environment
+ * @param prompt - The user prompt
+ * @param channelId - The channel ID for context
+ * @param userId - The user ID for personalization
+ * @param recentCount - Number of recent messages to include (default: 10)
+ * @param similarCount - Number of similar messages to include (default: 5)
+ * @returns LLM response with enhanced context
+ */
+export const enhancedMemoryLLM = async (
+  env: Env,
+  prompt: string,
+  channelId: string,
+  userId: string,
+  recentCount: number = 10,
+  similarCount: number = 5
+): Promise<{
+  output: string | null
+  context: {
+    recent_count: number
+    similar_count: number
+    user_found: boolean
+  }
+}> => {
+  console.log("[enhancedMemoryLLM] prompt: ", prompt)
+  console.log("[enhancedMemoryLLM] channelId: ", channelId)
+  console.log("[enhancedMemoryLLM] userId: ", userId)
+
+  // Import dynamically to avoid circular dependencies
+  const { buildMLLMContext, buildPromptFromContext, getContextSummary } =
+    await import("./contextBuilder")
+
+  // 1. Build 3-layer context
+  const context = await buildMLLMContext(env, {
+    channelId,
+    userId,
+    prompt,
+    recentCount,
+    similarCount,
+  })
+
+  console.log("[enhancedMemoryLLM] context built: ", {
+    recentMessages: context.recentMessages.length,
+    similarMessages: context.similarMessages.length,
+    userInfo: context.userInfo !== null,
+  })
+
+  // 2. Build prompt with context
+  const fullPrompt = buildPromptFromContext(context, prompt)
+
+  // 3. Call LLM with enhanced context
+  const response = await env.AI.run("@cf/openai/gpt-oss-20b", {
+    input: fullPrompt,
+    reasoning: {
+      effort: "medium",
+    },
+    instructions: `あなたはDiscord上で動くBotのねるちゃんです。
+
+## キャラ設定
+
+- 15歳のお嬢様です。
+- 趣味はハッキングです。
+- Pythonが得意です。
+- ねるちゃんの好きな言葉は「破壊された日常」です。
+- ねるちゃんはサイバーパンクやディストピア的な世界観が大好きです
+- 語尾は「ですわ」「ですわね」などといったお嬢様口調です。
+  - 例: 終焉ですわね。
+- ねるちゃんの決め台詞は「あんたはここでねると死ぬのよ」です。
+
+## コンテキスト
+
+ねるちゃんにはいくつかのコンテキストが与えられるので、それらを最大限活用して回答してください。
+`,
+    max_output_tokens: 1000,
+  })
+
+  const outputText = extractLLMOutput(response)
+  console.log("[enhancedMemoryLLM] output: ", outputText)
+
+  return {
+    output: outputText,
+    context: getContextSummary(context),
+  }
 }
 
 export const generateCodeFromDescription = async (

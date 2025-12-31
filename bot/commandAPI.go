@@ -280,3 +280,308 @@ func (c *CommandAPIClient) AutoStoreMemory(text string) error {
 
 	return nil
 }
+
+// MentionCommandResponse represents a response from get/set mention command
+type MentionCommandResponse struct {
+	Error       *string `json:"error"`
+	CommandName *string `json:"command_name"`
+}
+
+// GetMentionCommand gets the current mention command setting
+func (c *CommandAPIClient) GetMentionCommand() (*string, error) {
+	url := c.CodeSandboxURL + "/mention_command"
+
+	response, err := c.doRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	var mentionResponse MentionCommandResponse
+	if err := json.Unmarshal(respBody, &mentionResponse); err != nil {
+		return nil, fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if mentionResponse.Error != nil {
+		return nil, fmt.Errorf("API error: %s", *mentionResponse.Error)
+	}
+
+	return mentionResponse.CommandName, nil
+}
+
+// SetMentionCommandRequest represents a request to set mention command
+type SetMentionCommandRequest struct {
+	CommandName *string `json:"command_name"`
+}
+
+// SetMentionCommand sets the mention command
+func (c *CommandAPIClient) SetMentionCommand(commandName *string) error {
+	url := c.CodeSandboxURL + "/mention_command"
+
+	request := SetMentionCommandRequest{CommandName: commandName}
+	requestBodyJSON, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("error marshalling request body: %w", err)
+	}
+
+	response, err := c.doRequest("POST", url, requestBodyJSON)
+	if err != nil {
+		return fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if response.StatusCode != 200 {
+		return fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	var mentionResponse MentionCommandResponse
+	if err := json.Unmarshal(respBody, &mentionResponse); err != nil {
+		return fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if mentionResponse.Error != nil {
+		return fmt.Errorf("API error: %s", *mentionResponse.Error)
+	}
+
+	return nil
+}
+
+// ==================
+// Message API
+// ==================
+
+// StoreMessageAPIRequest represents a request to store a Discord message
+type StoreMessageAPIRequest struct {
+	ID                 string   `json:"id"`
+	ChannelID          string   `json:"channel_id"`
+	UserID             string   `json:"user_id"`
+	Content            string   `json:"content"`
+	Timestamp          string   `json:"timestamp"`
+	EditedTimestamp    *string  `json:"edited_timestamp,omitempty"`
+	ReferenceMessageID *string  `json:"reference_message_id,omitempty"`
+	MentionUserIDs     []string `json:"mention_user_ids,omitempty"`
+	MentionRoleIDs     []string `json:"mention_role_ids,omitempty"`
+	HasAttachments     bool     `json:"has_attachments"`
+	Username           string   `json:"username"`
+	DisplayName        *string  `json:"display_name,omitempty"`
+}
+
+// StoreMessageResponse represents a response from store message
+type StoreMessageResponse struct {
+	Error      *string `json:"error"`
+	Stored     bool    `json:"stored"`
+	Vectorized bool    `json:"vectorized"`
+}
+
+// StoreMessage sends a message to be stored in the database
+func (c *CommandAPIClient) StoreMessage(request StoreMessageAPIRequest) (*StoreMessageResponse, error) {
+	url := c.CodeSandboxURL + "/message"
+
+	requestBodyJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling request body: %w", err)
+	}
+
+	response, err := c.doRequest("POST", url, requestBodyJSON)
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	var storeResponse StoreMessageResponse
+	if err := json.Unmarshal(respBody, &storeResponse); err != nil {
+		return nil, fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if storeResponse.Error != nil {
+		return nil, fmt.Errorf("API error: %s", *storeResponse.Error)
+	}
+
+	return &storeResponse, nil
+}
+
+// UpdateMessageAPIRequest represents a request to update a Discord message
+type UpdateMessageAPIRequest struct {
+	ID              string `json:"id"`
+	Content         string `json:"content"`
+	EditedTimestamp string `json:"edited_timestamp"`
+}
+
+// UpdateMessage sends a message update to the API
+func (c *CommandAPIClient) UpdateMessage(request UpdateMessageAPIRequest) (*StoreMessageResponse, error) {
+	url := c.CodeSandboxURL + "/message"
+
+	requestBodyJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling request body: %w", err)
+	}
+
+	response, err := c.doRequest("PUT", url, requestBodyJSON)
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	// 404 is acceptable - message might not have been stored
+	if response.StatusCode == 404 {
+		return nil, nil
+	}
+
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	var updateResponse StoreMessageResponse
+	if err := json.Unmarshal(respBody, &updateResponse); err != nil {
+		return nil, fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if updateResponse.Error != nil {
+		return nil, fmt.Errorf("API error: %s", *updateResponse.Error)
+	}
+
+	return &updateResponse, nil
+}
+
+// DeleteMessageAPIRequest represents a request to delete a Discord message
+type DeleteMessageAPIRequest struct {
+	ID string `json:"id"`
+}
+
+// DeleteMessageResponse represents a response from delete message
+type DeleteMessageResponse struct {
+	Error   *string `json:"error"`
+	Success bool    `json:"success"`
+}
+
+// DeleteMessage sends a message deletion request to the API
+func (c *CommandAPIClient) DeleteMessage(request DeleteMessageAPIRequest) (*DeleteMessageResponse, error) {
+	url := c.CodeSandboxURL + "/message"
+
+	requestBodyJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling request body: %w", err)
+	}
+
+	response, err := c.doRequest("DELETE", url, requestBodyJSON)
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	// 404 is acceptable - message might not have been stored
+	if response.StatusCode == 404 {
+		return nil, nil
+	}
+
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	var deleteResponse DeleteMessageResponse
+	if err := json.Unmarshal(respBody, &deleteResponse); err != nil {
+		return nil, fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if deleteResponse.Error != nil {
+		return nil, fmt.Errorf("API error: %s", *deleteResponse.Error)
+	}
+
+	return &deleteResponse, nil
+}
+
+// ==================
+// Enhanced mllm API (v2)
+// ==================
+
+// EnhancedMllmRequest represents a request to the enhanced mllm endpoint
+type EnhancedMllmRequest struct {
+	Prompt       string `json:"prompt"`
+	ChannelID    string `json:"channel_id"`
+	UserID       string `json:"user_id"`
+	RecentCount  *int   `json:"recent_count,omitempty"`
+	SimilarCount *int   `json:"similar_count,omitempty"`
+}
+
+// EnhancedMllmContextInfo represents context information in the response
+type EnhancedMllmContextInfo struct {
+	RecentCount  int  `json:"recent_count"`
+	SimilarCount int  `json:"similar_count"`
+	UserFound    bool `json:"user_found"`
+}
+
+// EnhancedMllmResponse represents a response from the enhanced mllm endpoint
+type EnhancedMllmResponse struct {
+	Error   *string                  `json:"error"`
+	Output  *string                  `json:"output"`
+	Context *EnhancedMllmContextInfo `json:"context"`
+}
+
+// EnhancedMllm calls the enhanced mllm endpoint with 3-layer context
+func (c *CommandAPIClient) EnhancedMllm(request EnhancedMllmRequest) (*EnhancedMllmResponse, error) {
+	url := c.CodeSandboxURL + "/mllm/v2"
+
+	requestBodyJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling request body: %w", err)
+	}
+
+	response, err := c.doRequest("POST", url, requestBodyJSON)
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", response.StatusCode, string(respBody))
+	}
+
+	var mllmResponse EnhancedMllmResponse
+	if err := json.Unmarshal(respBody, &mllmResponse); err != nil {
+		return nil, fmt.Errorf("error unmarshalling response body: %w", err)
+	}
+
+	if mllmResponse.Error != nil {
+		return nil, fmt.Errorf("API error: %s", *mllmResponse.Error)
+	}
+
+	return &mllmResponse, nil
+}

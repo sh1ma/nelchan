@@ -97,7 +97,14 @@
 			"index_name": "nelchan-memory-index",
 			"remote": true
 		},
-	]
+	],
+	/**
+	 * Scheduled Triggers (Cron)
+	 * https://developers.cloudflare.com/workers/configuration/cron-triggers/
+	 */
+	"triggers": {
+		"crons": ["0 0 * * *"]  // 毎日00:00 UTCにユーザー情報更新
+	}
 	/**
 	 * Service Bindings (communicate between multiple Workers)
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
