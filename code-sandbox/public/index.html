@@ -532,6 +532,7 @@
           <li><a href="#commands">コマンド一覧</a></li>
           <li><a href="#text-command">テキストコマンド</a></li>
           <li><a href="#code-command">コードコマンド</a></li>
+          <li><a href="#smart-register">スマート登録</a></li>
           <li><a href="#execution">実行方法</a></li>
           <li><a href="#variables">利用可能な変数</a></li>
           <li><a href="#builtin-functions">ビルトイン関数</a></li>
@@ -557,6 +558,10 @@
               <tr>
                 <td>!register_code &lt;名前&gt; &lt;コード&gt;</td>
                 <td>コードコマンドを登録</td>
+              </tr>
+              <tr>
+                <td>!smart_register &lt;名前&gt; &lt;説明&gt;</td>
+                <td>自然言語からコードコマンドを自動生成</td>
               </tr>
               <tr>
                 <td>!&lt;コマンド名&gt; [引数...]</td>
@@ -621,6 +626,40 @@ print(random.randint(1, 6))
 ```python
 print(f"ようこそ、{username}さん！")
 ```</code></pre>
+        </section>
+
+        <section id="smart-register">
+          <h2>スマートコマンド登録</h2>
+          <p>
+            <code>!smart_register</code>
+            コマンドで、自然言語の説明からPythonコードを自動生成してコマンドを登録できます。
+          </p>
+
+          <div class="syntax">
+            <div class="syntax-label">構文</div>
+            <code>!smart_register &lt;コマンド名&gt; &lt;説明&gt;</code>
+          </div>
+
+          <div class="example">
+            <div class="example-title">例</div>
+            <pre data-lang="discord"><code>!smart_register dice 1から6までのランダムな数字を出力する</code></pre>
+            <p style="margin-bottom: 0">
+              上記を実行すると、LLMが説明に基づいてPythonコードを生成し、<code>dice</code>コマンドとして登録します。
+            </p>
+          </div>
+
+          <div class="example">
+            <div class="example-title">複雑な例</div>
+            <pre data-lang="discord"><code>!smart_register fortune おみくじを引いて運勢を表示する。大吉、吉、中吉、小吉、凶があり、それぞれに合ったメッセージも表示する</code></pre>
+          </div>
+
+          <div class="note">
+            <ul>
+              <li>コードは自動生成されるため、意図した動作にならない場合があります</li>
+              <li>必要に応じて <code>!register_code</code> で手動修正できます</li>
+              <li>生成されたコードはビルトイン関数（<code>llm</code>, <code>mget</code>等）を使用できます</li>
+            </ul>
+          </div>
         </section>
 
         <section id="execution">
@@ -716,6 +755,18 @@ print(f"{args[0]} + {args[1]} = {result}")
                 <td>LLM（AI）にプロンプトを送信し、応答テキストを取得</td>
               </tr>
               <tr>
+                <td>mget(query: str, top_k: int = 6)</td>
+                <td>メモリからセマンティック検索で関連情報を取得（RAG）</td>
+              </tr>
+              <tr>
+                <td>mllm(prompt: str, top_k: int = 6)</td>
+                <td>メモリを参照してLLMで回答を生成（RAG対応LLM）</td>
+              </tr>
+              <tr>
+                <td>automemory(text: str)</td>
+                <td>テキストから情報を自動抽出してメモリに保存</td>
+              </tr>
+              <tr>
                 <td>cs(s: str)</td>
                 <td>文字列をDiscordのコードブロック（```）で囲む</td>
               </tr>
@@ -760,6 +811,47 @@ response = requests.get("https://api.ipify.org?format=json")
 data = response.json()
 print(f"IP: {data['ip']}")
 ```</code></pre>
+          </div>
+
+          <h3>メモリ関連関数</h3>
+          <p>ねるちゃんは会話の内容をメモリに保存し、後から検索・参照できます。</p>
+
+          <div class="example">
+            <div class="example-title">mget関数の使用例（メモリ検索）</div>
+            <pre data-lang="discord"><code>!register_code search
+```python
+query = " ".join(args)
+results = mget(query, 5)  # 上位5件を検索
+for r in results:
+    print(f"- {r['content']} (score: {r['score']:.2f})")
+```</code></pre>
+            <p>実行：</p>
+            <pre data-lang="discord"><code>!search 好きな食べ物</code></pre>
+          </div>
+
+          <div class="example">
+            <div class="example-title">mllm関数の使用例（メモリ参照付きLLM）</div>
+            <pre data-lang="discord"><code>!register_code recall
+```python
+question = " ".join(args)
+# メモリを参照しながらLLMが回答
+answer = mllm(question, 6)
+print(answer)
+```</code></pre>
+            <p>実行：</p>
+            <pre data-lang="discord"><code>!recall Aさんの好きな食べ物は？</code></pre>
+          </div>
+
+          <div class="example">
+            <div class="example-title">automemory関数の使用例（自動メモリ保存）</div>
+            <pre data-lang="discord"><code>!register_code remember
+```python
+text = " ".join(args)
+count = automemory(text)
+print(f"{count}件の情報をメモリに保存しました")
+```</code></pre>
+            <p>実行：</p>
+            <pre data-lang="discord"><code>!remember Aさんはカレーが好きで、Bさんはラーメンが好き</code></pre>
           </div>
         </section>
 
