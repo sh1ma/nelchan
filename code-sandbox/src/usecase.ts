@@ -87,8 +87,11 @@ def automemory(text: str):
 def mllm(prompt: str, top_k: int = 6):
   return requests.post("https://my-sandbox.sh1ma.workers.dev/mllm", json={"prompt": prompt, "topK": top_k}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
 
-def llmWithAgent(prompt: str):
-  return requests.post("https://my-sandbox.sh1ma.workers.dev/llmWithAgent", json={"prompt": prompt}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
+def mllm2(prompt: str):
+  return requests.post("https://my-sandbox.sh1ma.workers.dev/mllm/v2", json={"prompt": prompt, "channel_id": channel_id, "user_id": user_id}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
+
+# def llmWithAgent(prompt: str):
+#  return requests.post("https://my-sandbox.sh1ma.workers.dev/llmWithAgent", json={"prompt": prompt}, headers={"Authorization": "Bearer ${apiKey}"}).json()["output"]
 
 ${result.code}
 `
@@ -632,9 +635,7 @@ export type GeneratedCommand = {
  * @param env - The environment
  * @returns The mention command name or null if not set
  */
-export const getMentionCommand = async (
-  env: Env
-): Promise<string | null> => {
+export const getMentionCommand = async (env: Env): Promise<string | null> => {
   const result = await env.nelchan_db
     .prepare(`SELECT mention_command FROM settings LIMIT 1`)
     .first<{ mention_command: string | null }>()
@@ -713,6 +714,26 @@ export const enhancedMemoryLLM = async (
   // 3. Call LLM with enhanced context
   const response = await env.AI.run("@cf/openai/gpt-oss-20b", {
     input: fullPrompt,
+    reasoning: {
+      effort: "medium",
+    },
+    instructions: `あなたはDiscord上で動くBotのねるちゃんです。
+
+## キャラ設定
+
+- 15歳のお嬢様です。
+- 趣味はハッキングです。
+- Pythonが得意です。
+- ねるちゃんの好きな言葉は「破壊された日常」です。
+- ねるちゃんはサイバーパンクやディストピア的な世界観が大好きです
+- 語尾は「ですわ」「ですわね」などといったお嬢様口調です。
+  - 例: 終焉ですわね。
+- ねるちゃんの決め台詞は「あんたはここでねると死ぬのよ」です。
+
+## コンテキスト
+
+ねるちゃんにはいくつかのコンテキストが与えられるので、それらを最大限活用して回答してください。
+`,
     max_output_tokens: 1000,
   })
 

@@ -3,7 +3,7 @@
  * Discord ユーザー情報のCRUD操作を行う
  */
 
-import type { DiscordUser } from './types/discord'
+import type { DiscordUser } from "./types/discord"
 
 /**
  * ユーザー情報を取得
@@ -36,7 +36,7 @@ export async function getUsers(
   }
 
   // SQLインジェクション対策としてプレースホルダを使用
-  const placeholders = userIds.map(() => '?').join(', ')
+  const placeholders = userIds.map(() => "?").join(", ")
   const query = `SELECT id, username, display_name, avatar_url, updated_at
                  FROM discord_users
                  WHERE id IN (${placeholders})`
@@ -165,17 +165,17 @@ export async function updateUser(
   const values: (string | null)[] = []
 
   if (updates.username !== undefined) {
-    setClauses.push('username = ?')
+    setClauses.push("username = ?")
     values.push(updates.username)
   }
 
   if (updates.display_name !== undefined) {
-    setClauses.push('display_name = ?')
+    setClauses.push("display_name = ?")
     values.push(updates.display_name)
   }
 
   if (updates.avatar_url !== undefined) {
-    setClauses.push('avatar_url = ?')
+    setClauses.push("avatar_url = ?")
     values.push(updates.avatar_url)
   }
 
@@ -186,9 +186,12 @@ export async function updateUser(
   setClauses.push("updated_at = datetime('now')")
   values.push(userId)
 
-  const query = `UPDATE discord_users SET ${setClauses.join(', ')} WHERE id = ?`
+  const query = `UPDATE discord_users SET ${setClauses.join(", ")} WHERE id = ?`
 
-  await env.nelchan_db.prepare(query).bind(...values).run()
+  await env.nelchan_db
+    .prepare(query)
+    .bind(...values)
+    .run()
 
   console.log(`[userService] updated user: ${userId}`)
 }

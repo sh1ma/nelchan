@@ -263,6 +263,7 @@ func (n *Nelchan) handleExecCommand(s *discordgo.Session, m *discordgo.MessageCr
 		"username":    m.Author.GlobalName,
 		"user_id":     m.Author.ID,
 		"user_avatar": m.Author.Avatar,
+		"channel_id":  m.ChannelID,
 	}
 
 	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
@@ -294,9 +295,10 @@ func (n *Nelchan) handleExecCommand(s *discordgo.Session, m *discordgo.MessageCr
 // handleDynamicCodeCommand handles code commands that are not registered as built-in commands
 func (n *Nelchan) handleDynamicCodeCommand(s *discordgo.Session, m *discordgo.MessageCreate, cmd *SlashCommand) {
 	vars := map[string]string{
-		"username":    m.Author.DisplayName(),
+		"username":    m.Author.GlobalName,
 		"user_id":     m.Author.ID,
 		"user_avatar": m.Author.Avatar,
+		"channel_id":  m.ChannelID,
 	}
 
 	args := cmd.Args
@@ -470,9 +472,10 @@ func (n *Nelchan) handleMention(s *discordgo.Session, m *discordgo.MessageCreate
 	_ = s.ChannelTyping(m.ChannelID)
 
 	vars := map[string]string{
-		"username":    m.Author.DisplayName(),
+		"username":    m.Author.GlobalName,
 		"user_id":     m.Author.ID,
 		"user_avatar": m.Author.Avatar,
+		"channel_id":  m.ChannelID,
 	}
 
 	// Split args into slice
