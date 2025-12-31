@@ -107,6 +107,7 @@ func (n *Nelchan) Start() error {
 	n.Discord.AddHandler(n.handleMessageDelete)
 
 	// Set intents for guild messages
+	n.Discord.AddHandler(n.handleInteraction)
 	n.SetIntents(discordgo.IntentsGuildMessages)
 
 	err := n.Discord.Open()
@@ -130,6 +131,7 @@ func (n *Nelchan) Close() error {
 // handleRegisterCodeCommand handles the !register_code command
 // Usage: !register_code <command_name> <code>
 // Code can be plain text or wrapped in backticks (```python ... ```)
+// If code contains "# args = [...]" comment, registers as Discord slash command
 func (n *Nelchan) handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.MessageCreate, _ *SlashCommand) {
 	// Re-parse with body support for code commands
 	cmd := n.CommandParser.ParseSlashCommandWithBody(m.Content, 2)
@@ -160,7 +162,66 @@ func (n *Nelchan) handleRegisterCodeCommand(s *discordgo.Session, m *discordgo.M
 		return
 	}
 
+	// Check for args comment and register as slash command if present
+	args := n.CommandParser.ExtractArgsFromComment(code)
+	if args != nil {
+		err := n.registerSlashCommand(s, m.GuildID, commandName, args)
+		if err != nil {
+			fmt.Printf("error registering slash command: %v\n", err)
+			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("コードコマンド「%s」を登録しました！\n⚠️ スラッシュコマンドの登録に失敗: %s", commandName, err.Error()))
+			return
+		}
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("コードコマンド「%s」を登録しました！（スラッシュコマンド対応）", commandName))
+		return
+	}
+
 	_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("コードコマンド「%s」を登録しました！", commandName))
+}
+
+// registerSlashCommand registers a Discord application command for the given code command
+func (n *Nelchan) registerSlashCommand(s *discordgo.Session, guildID, commandName string, args []ArgOption) error {
+	options := make([]*discordgo.ApplicationCommandOption, len(args))
+	for i, arg := range args {
+		optionType := argTypeToDiscordType(arg.Type)
+		description := arg.Description
+		if description == "" {
+			description = arg.Name // Use name as fallback description
+		}
+		options[i] = &discordgo.ApplicationCommandOption{
+			Type:        optionType,
+			Name:        arg.Name,
+			Description: description,
+			Required:    arg.Required,
+		}
+	}
+
+	appCmd := &discordgo.ApplicationCommand{
+		Name:        commandName,
+		Description: fmt.Sprintf("ねるちゃんコマンド: %s", commandName),
+		Options:     options,
+	}
+
+	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, appCmd)
+	if err != nil {
+		return fmt.Errorf("failed to create application command: %w", err)
+	}
+
+	fmt.Printf("registered slash command: /%s with %d options\n", commandName, len(options))
+	return nil
+}
+
+// argTypeToDiscordType converts ArgOption type string to Discord ApplicationCommandOptionType
+func argTypeToDiscordType(t string) discordgo.ApplicationCommandOptionType {
+	switch t {
+	case "string":
+		return discordgo.ApplicationCommandOptionString
+	case "number", "integer":
+		return discordgo.ApplicationCommandOptionInteger
+	case "boolean", "bool":
+		return discordgo.ApplicationCommandOptionBoolean
+	default:
+		return discordgo.ApplicationCommandOptionString
+	}
 }
 
 // handleSmartRegisterCommand handles the !sreg command
@@ -531,4 +592,85 @@ func (n *Nelchan) sendMessage(s *discordgo.Session, channelID, content string) e
 		},
 	})
 	return err
+}
+
+// handleInteraction handles Discord slash command interactions
+func (n *Nelchan) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.Type != discordgo.InteractionApplicationCommand {
+		return
+	}
+
+	data := i.ApplicationCommandData()
+	commandName := data.Name
+
+	// Extract args from interaction options
+	args := make([]string, len(data.Options))
+	for idx, opt := range data.Options {
+		args[idx] = fmt.Sprintf("%v", opt.Value)
+	}
+
+	// Get user info
+	var user *discordgo.User
+	if i.Member != nil {
+		user = i.Member.User
+	} else {
+		user = i.User
+	}
+
+	vars := map[string]string{
+		"username":    user.GlobalName,
+		"user_id":     user.ID,
+		"user_avatar": user.Avatar,
+	}
+
+	// Defer response to allow longer processing time
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+	})
+	if err != nil {
+		fmt.Printf("error deferring interaction response: %v\n", err)
+		return
+	}
+
+	// Run the command
+	result, err := n.CommandAPIClient.RunCommand(RunCommandRequest{
+		CommandName: commandName,
+		IsCode:      true,
+		Vars:        vars,
+		Args:        args,
+	})
+
+	if err != nil {
+		fmt.Printf("error running slash command: %v\n", err)
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: stringPtr(fmt.Sprintf("エラー: %s", err.Error())),
+		})
+		return
+	}
+
+	if result == nil {
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: stringPtr(fmt.Sprintf("コマンド「%s」は見つかりませんでした", commandName)),
+		})
+		return
+	}
+
+	// Edit the deferred response with the result
+	content := result.Content
+	if utf8.RuneCountInString(content) > maxMessageLength {
+		content = content[:maxMessageLength-3] + "..."
+	}
+
+	_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
+	})
+	if err != nil {
+		fmt.Printf("error editing interaction response: %v\n", err)
+	}
+
+	fmt.Printf("slash command executed: /%s\n", commandName)
+}
+
+func stringPtr(s string) *string {
+	return &s
 }

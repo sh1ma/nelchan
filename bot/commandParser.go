@@ -1,9 +1,21 @@
 package nelchanbot
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 )
+
+// ArgOption represents a single argument option for slash commands
+type ArgOption struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"` // "string", "number", "boolean"
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+// argsCommentRe matches lines like: # args = [...]
+var argsCommentRe = regexp.MustCompile(`^\s*#\s*args\s*=\s*(.+?)\s*$`)
 
 type CommandParser struct{}
 
@@ -156,4 +168,24 @@ func (p *CommandParser) ExtractCodeFromBackticks(content string) string {
 
 	// Case 4: Plain text (no backticks)
 	return content
+}
+
+// ExtractArgsFromComment extracts args definition from a comment line in code
+// Expected format: # args = [{"name": "arg1", "type": "string"}, ...]
+// Returns nil if no args comment is found or if parsing fails
+func (p *CommandParser) ExtractArgsFromComment(code string) []ArgOption {
+	for _, line := range strings.Split(code, "\n") {
+		matches := argsCommentRe.FindStringSubmatch(line)
+		if len(matches) < 2 {
+			continue
+		}
+
+		raw := matches[1]
+		var args []ArgOption
+		if err := json.Unmarshal([]byte(raw), &args); err != nil {
+			return nil
+		}
+		return args
+	}
+	return nil
 }

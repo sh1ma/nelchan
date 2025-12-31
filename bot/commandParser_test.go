@@ -239,6 +239,78 @@ func TestParseSlashCommandWithBody(t *testing.T) {
 	}
 }
 
+func TestExtractArgsFromComment(t *testing.T) {
+	parser := NewCommandParser()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected []ArgOption
+	}{
+		{
+			name: "single arg with type and name",
+			input: `# args = [{"type": "string", "name": "text"}]
+print(args[0])`,
+			expected: []ArgOption{
+				{Type: "string", Name: "text"},
+			},
+		},
+		{
+			name: "multiple args",
+			input: `# args = [{"type": "number", "name": "番号"}, {"type": "string", "name": "お客様の名前"}]
+
+def main():
+    i = args[0]
+    s = args[1]
+    print(f"{i}番目のお客様: {s}さん")`,
+			expected: []ArgOption{
+				{Type: "number", Name: "番号"},
+				{Type: "string", Name: "お客様の名前"},
+			},
+		},
+		{
+			name: "with description and required",
+			input: `# args = [{"type": "string", "name": "query", "description": "検索クエリ", "required": true}]
+print(args[0])`,
+			expected: []ArgOption{
+				{Type: "string", Name: "query", Description: "検索クエリ", Required: true},
+			},
+		},
+		{
+			name:     "no args comment",
+			input:    `print("hello")`,
+			expected: nil,
+		},
+		{
+			name:     "invalid json",
+			input:    `# args = [invalid json]`,
+			expected: nil,
+		},
+		{
+			name: "args comment with extra whitespace",
+			input: `#   args   =   [{"type": "string", "name": "test"}]
+code here`,
+			expected: []ArgOption{
+				{Type: "string", Name: "test"},
+			},
+		},
+		{
+			name:     "empty code",
+			input:    "",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parser.ExtractArgsFromComment(tt.input)
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("ExtractArgsFromComment() = %+v, want %+v", result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestSlashCommandHelpers(t *testing.T) {
 	cmd := &SlashCommand{
 		Name: "test",
