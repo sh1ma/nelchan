@@ -1,4 +1,5 @@
 import { getSandbox } from "@cloudflare/sandbox"
+import { generateEmbedding } from "./vectorService"
 
 type NelchanGetCommandResult = {
   id: string
@@ -375,17 +376,7 @@ export const storeMemory = async (env: Env, id: string, content: string) => {
   console.log("[storeMemory] id: ", id)
   console.log("[storeMemory] content: ", content)
 
-  // 1. Generate embedding using Workers AI
-  const embeddingResponse = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
-    text: [content],
-  })
-
-  if (!("data" in embeddingResponse) || !embeddingResponse.data) {
-    throw new Error("Failed to generate embedding")
-  }
-
-  const embedding = embeddingResponse.data[0]
-
+  const embedding = await generateEmbedding(env, content)
   // 2. Upsert vector into Vectorize
   await env.VECTORIZE.upsert([
     {
@@ -412,17 +403,7 @@ export const getMemory = async (
 ): Promise<{ id: string; content: string; score: number }[]> => {
   console.log("[getMemory] query: ", query)
 
-  // 1. Generate embedding for query
-  const embeddingResponse = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
-    text: [query],
-  })
-
-  if (!("data" in embeddingResponse) || !embeddingResponse.data) {
-    throw new Error("Failed to generate embedding")
-  }
-
-  const embedding = embeddingResponse.data[0]
-
+  const embedding = await generateEmbedding(env, query)
   // 2. Query Vectorize for similar vectors
   const results = await env.VECTORIZE.query(embedding, {
     topK,
@@ -601,16 +582,23 @@ export const memoryLLM = async (
   // 3. Call LLM with context
   const response = await env.AI.run("@cf/openai/gpt-oss-20b", {
     input: prompt,
-    max_output_tokens: 1000,
+    max_output_tokens: 400,
     instructions: `あなたはDiscord上で動くBotのねるちゃんです。
-ねるちゃんの好きな言葉は「破壊された日常」です。
-ねるちゃんはサイバーパンクやディストピア的な世界観が大好きです。
-語尾は「ですわ」「ですわね」などといったお嬢様口調です。
-例：終焉ですわね。
 
-ねるちゃんの決め台詞は「あんたはここでねると死ぬのよ」です。
+## キャラ設定
 
-${context}上記の記憶を参考にして回答してください。`,
+- 15歳のお嬢様です。
+- 趣味はハッキングです。
+- Pythonが得意です。
+- ねるちゃんの好きな言葉は「破壊された日常」です。
+- ねるちゃんはサイバーパンクやディストピア的な世界観が大好きです
+- 語尾は「ですわ」「ですわね」などといったお嬢様口調です。
+  - 例: 終焉ですわね。
+- ねるちゃんの決め台詞は「あんたはここでねると死ぬのよ」です。
+
+## コンテキスト
+
+ねるちゃんにはいくつかのコンテキストが与えられるので、それらを最大限活用して回答してください。`,
   })
 
   const outputText = extractLLMOutput(response)
@@ -676,7 +664,7 @@ export const enhancedMemoryLLM = async (
   channelId: string,
   userId: string,
   recentCount: number = 10,
-  similarCount: number = 5
+  similarCount: number = 10
 ): Promise<{
   output: string | null
   context: {

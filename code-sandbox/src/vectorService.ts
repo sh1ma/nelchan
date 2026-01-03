@@ -3,7 +3,7 @@
  * embedding生成とVectorizeへのupsert/delete操作を行う
  */
 
-import type { VectorizedMessageMetadata } from './types/discord'
+import type { VectorizedMessageMetadata } from "./types/discord"
 
 /**
  * テキストのembeddingを生成
@@ -12,15 +12,19 @@ export async function generateEmbedding(
   env: Env,
   text: string
 ): Promise<number[]> {
-  const response = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
-    text: [text],
-  })
+  const resp = await (
+    await env.YUKI_SERVICE.fetch("http://10.99.99.1:8000/embeddings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text,
+      }),
+    })
+  ).json<{ embedding: number[] }>()
 
-  if (!('data' in response) || !response.data || !response.data[0]) {
-    throw new Error('Failed to generate embedding')
-  }
-
-  return response.data[0]
+  return resp.embedding
 }
 
 /**
@@ -34,12 +38,12 @@ export async function generateEmbeddings(
     return []
   }
 
-  const response = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
+  const response = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
     text: texts,
   })
 
-  if (!('data' in response) || !response.data) {
-    throw new Error('Failed to generate embeddings')
+  if (!("data" in response) || !response.data) {
+    throw new Error("Failed to generate embeddings")
   }
 
   return response.data
@@ -160,11 +164,11 @@ export async function searchSimilarMessages(
 
   const queryOptions: {
     topK: number
-    returnMetadata: 'all'
+    returnMetadata: "all"
     filter?: { channel_id: string }
   } = {
     topK,
-    returnMetadata: 'all',
+    returnMetadata: "all",
   }
 
   // チャンネルフィルタがあれば追加
@@ -178,11 +182,11 @@ export async function searchSimilarMessages(
     id: match.id,
     score: match.score,
     metadata: {
-      content: (match.metadata?.content as string) ?? '',
-      channel_id: (match.metadata?.channel_id as string) ?? '',
-      user_id: (match.metadata?.user_id as string) ?? '',
-      username: (match.metadata?.username as string) ?? '',
-      timestamp: (match.metadata?.timestamp as string) ?? '',
+      content: (match.metadata?.content as string) ?? "",
+      channel_id: (match.metadata?.channel_id as string) ?? "",
+      user_id: (match.metadata?.user_id as string) ?? "",
+      username: (match.metadata?.username as string) ?? "",
+      timestamp: (match.metadata?.timestamp as string) ?? "",
     },
   }))
 }

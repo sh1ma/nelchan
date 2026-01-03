@@ -151,8 +151,6 @@ func (r *CommandRouter) handleTextCommand(s *discordgo.Session, m *discordgo.Mes
 		cmd.Args = strings.Fields(parts[1])
 	}
 
-	fmt.Printf("text command received: %s\n", cmd.Name)
-
 	// Use fallback handler for text commands
 	if r.textFallbackHandler != nil {
 		r.textFallbackHandler(s, m, cmd)

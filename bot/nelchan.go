@@ -12,6 +12,7 @@ import (
 type NelchanConfig struct {
 	Env            string
 	CodeSandboxURL string
+	BotOwnerUserID string
 }
 
 type Nelchan struct {
@@ -20,6 +21,48 @@ type Nelchan struct {
 	CommandAPIClient *CommandAPIClient
 	CommandParser    *CommandParser
 	CommandRouter    *CommandRouter
+}
+
+// builtinSlashCommands defines the built-in slash commands to register on startup
+var builtinSlashCommands = []*discordgo.ApplicationCommand{
+	{
+		Name:        "register",
+		Description: "テキストコマンドを登録します",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "command_name",
+				Description: "コマンド名",
+				Required:    true,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "text",
+				Description: "登録するテキスト",
+				Required:    true,
+			},
+		},
+	},
+	{
+		Name:        "set_mention",
+		Description: "メンション時に実行するコマンドを設定します",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "command_name",
+				Description: "コマンド名（省略で現在の設定を表示、clearでクリア）",
+				Required:    false,
+			},
+		},
+	},
+	{
+		Name:        "reset-slash-commands",
+		Description: "【管理者専用】全てのスラッシュコマンドを削除します",
+	},
+	{
+		Name:        "register-builtin-commands",
+		Description: "【管理者専用】ビルトインコマンドを再登録します",
+	},
 }
 
 func NewNelchan() (*Nelchan, error) {
@@ -50,9 +93,12 @@ func NewNelchan() (*Nelchan, error) {
 		return nil, fmt.Errorf("error creating Discord session: %w", err)
 	}
 
+	botOwnerUserID := os.Getenv("BOT_OWNER_USER_ID")
+
 	config := NelchanConfig{
 		Env:            env,
 		CodeSandboxURL: codeSandboxURL,
+		BotOwnerUserID: botOwnerUserID,
 	}
 
 	commandAPIClient := NewCommandAPIClient(codeSandboxURL, nelchanAPIKey)
@@ -106,8 +152,13 @@ func (n *Nelchan) Start() error {
 	n.Discord.AddHandler(n.handleMessageUpdate)
 	n.Discord.AddHandler(n.handleMessageDelete)
 
-	// Set intents for guild messages
+	// Register interaction handler for slash commands
 	n.Discord.AddHandler(n.handleInteraction)
+
+	// Register ready handler to register slash commands on startup
+	n.Discord.AddHandler(n.handleReady)
+
+	// Set intents for guild messages
 	n.SetIntents(discordgo.IntentsGuildMessages)
 
 	err := n.Discord.Open()
@@ -115,6 +166,59 @@ func (n *Nelchan) Start() error {
 		return fmt.Errorf("ねるちゃんの起動に失敗しました: %w", err)
 	}
 	return nil
+}
+
+// handleReady is called when the bot is ready and registers built-in slash commands
+func (n *Nelchan) handleReady(s *discordgo.Session, r *discordgo.Ready) {
+	fmt.Printf("ねるちゃんが起動しました！ユーザー: %s#%s\n", r.User.Username, r.User.Discriminator)
+	fmt.Printf("参加ギルド数: %d\n", len(r.Guilds))
+
+	// Register built-in slash commands globally
+	n.registerBuiltinSlashCommands(s)
+}
+
+// registerBuiltinSlashCommands registers built-in slash commands globally
+// It will update existing commands if they have different options
+func (n *Nelchan) registerBuiltinSlashCommands(s *discordgo.Session) {
+	// Get existing global commands
+	existingCmds, err := s.ApplicationCommands(s.State.User.ID, "")
+	if err != nil {
+		fmt.Printf("error getting existing global commands: %v\n", err)
+		return
+	}
+
+	// Create a map of existing commands by name
+	existingByName := make(map[string]*discordgo.ApplicationCommand)
+	for _, cmd := range existingCmds {
+		existingByName[cmd.Name] = cmd
+	}
+
+	// Register or update each built-in command
+	for _, cmd := range builtinSlashCommands {
+		existing, exists := existingByName[cmd.Name]
+		if exists {
+			// Check if options count differs (simple check for update)
+			if len(existing.Options) != len(cmd.Options) {
+				// Update the command
+				_, err := s.ApplicationCommandEdit(s.State.User.ID, "", existing.ID, cmd)
+				if err != nil {
+					fmt.Printf("error updating global slash command /%s: %v\n", cmd.Name, err)
+					continue
+				}
+				fmt.Printf("updated global slash command /%s (options: %d -> %d)\n", cmd.Name, len(existing.Options), len(cmd.Options))
+			} else {
+				fmt.Printf("global slash command /%s already exists with same options, skipping\n", cmd.Name)
+			}
+			continue
+		}
+
+		_, err := s.ApplicationCommandCreate(s.State.User.ID, "", cmd)
+		if err != nil {
+			fmt.Printf("error registering global slash command /%s: %v\n", cmd.Name, err)
+			continue
+		}
+		fmt.Printf("registered global slash command /%s\n", cmd.Name)
+	}
 }
 
 func (n *Nelchan) Close() error {
@@ -446,23 +550,18 @@ func (n *Nelchan) handleTextCommand(s *discordgo.Session, m *discordgo.MessageCr
 		IsCode:      false,
 		Vars:        nil,
 	})
-	if err != nil {
-		fmt.Println("error running text command,", err)
+	// Silently ignore errors and not found (404) for text commands
+	if err != nil || result == nil {
 		return
 	}
 
-	if result == nil {
-		// Text command not found, don't respond (to avoid spamming)
-		return
-	}
+	fmt.Printf("text command fired: %s\n", cmd.Name)
 
 	err = n.sendMessage(s, m.ChannelID, result.Content)
 	if err != nil {
 		fmt.Println("error sending message,", err)
 		return
 	}
-
-	fmt.Printf("message sent: %s\n", result.Content)
 }
 
 // handleSetMentionCommand handles the !set_mention command
@@ -603,6 +702,175 @@ func (n *Nelchan) handleInteraction(s *discordgo.Session, i *discordgo.Interacti
 	data := i.ApplicationCommandData()
 	commandName := data.Name
 
+	// Handle built-in commands
+	switch commandName {
+	case "register":
+		n.handleRegisterSlashCommand(s, i)
+		return
+	case "set_mention":
+		n.handleSetMentionSlashCommand(s, i)
+		return
+	case "reset-slash-commands":
+		n.handleResetSlashCommandsCommand(s, i)
+		return
+	case "register-builtin-commands":
+		n.handleRegisterBuiltinCommandsCommand(s, i)
+		return
+	}
+
+	// Handle dynamic code commands
+	n.handleDynamicSlashCommand(s, i)
+}
+
+// handleRegisterSlashCommand handles the /register slash command
+func (n *Nelchan) handleRegisterSlashCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ApplicationCommandData()
+
+	// Debug: log all options
+	fmt.Printf("DEBUG /register: options count=%d\n", len(data.Options))
+	for idx, opt := range data.Options {
+		fmt.Printf("DEBUG /register: option[%d] name=%s type=%d value=%v\n", idx, opt.Name, opt.Type, opt.Value)
+	}
+
+	// Get user info for author_id
+	var user *discordgo.User
+	if i.Member != nil {
+		user = i.Member.User
+	} else {
+		user = i.User
+	}
+
+	// Extract options
+	var commandNameOpt, textOpt string
+	for _, opt := range data.Options {
+		switch opt.Name {
+		case "command_name":
+			commandNameOpt = opt.StringValue()
+		case "text":
+			textOpt = opt.StringValue()
+		}
+	}
+	fmt.Printf("DEBUG /register: commandNameOpt=%s, textOpt=%s\n", commandNameOpt, textOpt)
+
+	// Register the command
+	err := n.CommandAPIClient.RegisterCommand(RegisterCommandRequest{
+		CommandName:    commandNameOpt,
+		CommandContent: textOpt,
+		IsCode:         false,
+		AuthorID:       user.ID,
+	})
+
+	if err != nil {
+		fmt.Printf("error registering command via slash: %v\n", err)
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("エラー: %s", err.Error()),
+			},
+		})
+		return
+	}
+
+	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: fmt.Sprintf("コマンド「%s」を登録しました！", commandNameOpt),
+		},
+	})
+	fmt.Printf("slash command /register executed: name=%s\n", commandNameOpt)
+}
+
+// handleSetMentionSlashCommand handles the /set_mention slash command
+func (n *Nelchan) handleSetMentionSlashCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ApplicationCommandData()
+
+	// Extract command_name option (optional)
+	var commandNameOpt string
+	for _, opt := range data.Options {
+		if opt.Name == "command_name" {
+			commandNameOpt = opt.StringValue()
+		}
+	}
+
+	// No args - show current mention command
+	if commandNameOpt == "" {
+		currentCmd, err := n.CommandAPIClient.GetMentionCommand()
+		if err != nil {
+			fmt.Println("error getting mention command:", err)
+			_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: fmt.Sprintf("エラー: %s", err.Error()),
+				},
+			})
+			return
+		}
+
+		var content string
+		if currentCmd == nil || *currentCmd == "" {
+			content = "メンションコマンドは設定されていません"
+		} else {
+			content = fmt.Sprintf("現在のメンションコマンド: `%s`", *currentCmd)
+		}
+
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: content,
+			},
+		})
+		return
+	}
+
+	// Clear command
+	if commandNameOpt == "clear" {
+		err := n.CommandAPIClient.SetMentionCommand(nil)
+		if err != nil {
+			fmt.Println("error clearing mention command:", err)
+			_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: fmt.Sprintf("エラー: %s", err.Error()),
+				},
+			})
+			return
+		}
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "メンションコマンドをクリアしました",
+			},
+		})
+		return
+	}
+
+	// Set command
+	err := n.CommandAPIClient.SetMentionCommand(&commandNameOpt)
+	if err != nil {
+		fmt.Println("error setting mention command:", err)
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("エラー: %s", err.Error()),
+			},
+		})
+		return
+	}
+
+	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: fmt.Sprintf("メンションコマンドを `%s` に設定しました", commandNameOpt),
+		},
+	})
+	fmt.Printf("slash command /set_mention executed: name=%s\n", commandNameOpt)
+}
+
+// handleDynamicSlashCommand handles dynamically registered code commands via slash
+func (n *Nelchan) handleDynamicSlashCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ApplicationCommandData()
+	commandName := data.Name
+
 	// Extract args from interaction options
 	args := make([]string, len(data.Options))
 	for idx, opt := range data.Options {
@@ -673,4 +941,129 @@ func (n *Nelchan) handleInteraction(s *discordgo.Session, i *discordgo.Interacti
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+// handleResetSlashCommandsCommand handles the /reset-slash-commands slash command (owner only)
+func (n *Nelchan) handleResetSlashCommandsCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Get user info
+	var user *discordgo.User
+	if i.Member != nil {
+		user = i.Member.User
+	} else {
+		user = i.User
+	}
+
+	// Check if user is the bot owner
+	if n.Config.BotOwnerUserID == "" || user.ID != n.Config.BotOwnerUserID {
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "このコマンドはBot管理者のみ実行できます",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
+	// Defer response as this may take a while
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		fmt.Printf("error deferring interaction response: %v\n", err)
+		return
+	}
+
+	guildID := i.GuildID
+	deletedGuild := 0
+	deletedGlobal := 0
+
+	// Delete guild commands
+	guildCommands, err := s.ApplicationCommands(s.State.User.ID, guildID)
+	if err != nil {
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: stringPtr(fmt.Sprintf("ギルドコマンド取得エラー: %s", err.Error())),
+		})
+		return
+	}
+
+	for _, cmd := range guildCommands {
+		if cmd.Name == "reset-slash-commands" {
+			fmt.Printf("skipping deletion of /%s (guild)\n", cmd.Name)
+			continue
+		}
+		err := s.ApplicationCommandDelete(s.State.User.ID, guildID, cmd.ID)
+		if err != nil {
+			fmt.Printf("error deleting guild command /%s: %v\n", cmd.Name, err)
+			continue
+		}
+		fmt.Printf("deleted guild slash command /%s from guild %s\n", cmd.Name, guildID)
+		deletedGuild++
+	}
+
+	// Delete global commands
+	globalCommands, err := s.ApplicationCommands(s.State.User.ID, "")
+	if err != nil {
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: stringPtr(fmt.Sprintf("ギルドコマンド%d個削除。グローバルコマンド取得エラー: %s", deletedGuild, err.Error())),
+		})
+		return
+	}
+
+	for _, cmd := range globalCommands {
+		if cmd.Name == "reset-slash-commands" {
+			fmt.Printf("skipping deletion of /%s (global)\n", cmd.Name)
+			continue
+		}
+		err := s.ApplicationCommandDelete(s.State.User.ID, "", cmd.ID)
+		if err != nil {
+			fmt.Printf("error deleting global command /%s: %v\n", cmd.Name, err)
+			continue
+		}
+		fmt.Printf("deleted global slash command /%s\n", cmd.Name)
+		deletedGlobal++
+	}
+
+	_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: stringPtr(fmt.Sprintf("ギルドコマンド%d個、グローバルコマンド%d個を削除しました。Botを再起動するとビルトインコマンドが再登録されます。", deletedGuild, deletedGlobal)),
+	})
+	fmt.Printf("reset-slash-cmd executed by %s: deleted %d guild + %d global commands\n", user.Username, deletedGuild, deletedGlobal)
+}
+
+// handleRegisterBuiltinCommandsCommand handles the /register-builtin-commands slash command (owner only)
+func (n *Nelchan) handleRegisterBuiltinCommandsCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Get user info
+	var user *discordgo.User
+	if i.Member != nil {
+		user = i.Member.User
+	} else {
+		user = i.User
+	}
+
+	// Check if user is the bot owner
+	if n.Config.BotOwnerUserID == "" || user.ID != n.Config.BotOwnerUserID {
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "このコマンドはBot管理者のみ実行できます",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
+	// Register builtin commands globally
+	n.registerBuiltinSlashCommands(s)
+
+	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "ビルトインコマンドをグローバルに再登録しました",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+	fmt.Printf("register-builtin-commands executed by %s\n", user.Username)
 }
